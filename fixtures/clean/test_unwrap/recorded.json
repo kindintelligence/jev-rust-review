@@ -2,36 +2,53 @@
   "model": "jev-1.13.0",
   "note": "Recorded from the live Jev API by tests/eval.rs live_eval; replayed offline.",
   "responses": {
-    "06a78756f87e2af2": {
+    "b59603a1ffe3ddf3": {
+      "model": "jev-1.13.0",
       "answers": {
-        "category": {
-          "choice": "not_supported",
-          "confidence": 0.24,
-          "probabilities": {
-            "debatable_tradeoff": 0.37,
-            "not_supported": 0.43,
-            "real_defect": 0.13,
-            "style_preference": 0.07
-          },
-          "type": "choice"
-        },
-        "severity": {
-          "choice": "low",
-          "confidence": 0.39,
-          "probabilities": {
-            "critical": 0.01,
-            "high": 0.36,
-            "low": 0.54,
-            "medium": 0.09
-          },
-          "type": "choice"
-        },
-        "supported": {
-          "noul": 0.32,
-          "type": "noul"
+        "testing.weak_assertion": {
+          "type": "noul",
+          "noul": 0.06
         }
       },
+      "usage": {
+        "input_tokens": 0
+      }
+    },
+    "d46558fed8694a8c": {
       "model": "jev-1.13.0",
+      "answers": {
+        "support": {
+          "type": "choice",
+          "choice": "refuted",
+          "probabilities": {
+            "insufficient_context": 0.07,
+            "refuted": 0.82,
+            "supported": 0.11
+          },
+          "confidence": 0.73
+        },
+        "severity": {
+          "type": "score",
+          "score": 0.93,
+          "probabilities": {
+            "0": 0.47,
+            "1": 0.13,
+            "2": 0.39,
+            "3": 0.01
+          },
+          "confidence": 0.07
+        },
+        "category": {
+          "type": "choice",
+          "choice": "debatable_tradeoff",
+          "probabilities": {
+            "debatable_tradeoff": 0.46,
+            "real_defect": 0.36,
+            "style_preference": 0.18
+          },
+          "confidence": 0.18
+        }
+      },
       "usage": {
         "input_tokens": 0
       }

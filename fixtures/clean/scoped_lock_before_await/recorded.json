@@ -2,95 +2,96 @@
   "model": "jev-1.13.0",
   "note": "Recorded from the live Jev API by tests/eval.rs live_eval; replayed offline.",
   "responses": {
-    "83ba39a8b4d17a05": {
+    "a85d222a6644f99b": {
+      "model": "jev-1.13.0",
       "answers": {
-        "api.breaking_change": {
-          "noul": 0.08,
-          "type": "noul"
-        },
-        "async.guard_across_await": {
-          "noul": 0.12,
-          "type": "noul"
-        },
-        "concurrency.check_then_act": {
-          "noul": 0.31,
-          "type": "noul"
-        },
-        "concurrency.lock_scope": {
-          "noul": 0.12,
-          "type": "noul"
-        },
-        "correctness.drop_order": {
-          "noul": 0.19,
-          "type": "noul"
-        },
         "correctness.logic": {
-          "noul": 0.14,
-          "type": "noul"
+          "type": "noul",
+          "noul": 0.11
         },
         "correctness.overflow": {
-          "noul": 0.3,
-          "type": "noul"
+          "type": "noul",
+          "noul": 0.4
         },
-        "error_handling.panic": {
-          "noul": 0.69,
-          "type": "noul"
+        "correctness.drop_order": {
+          "type": "noul",
+          "noul": 0.15
         },
         "error_handling.swallowed": {
-          "noul": 0.7,
-          "type": "noul"
+          "type": "noul",
+          "noul": 0.41
+        },
+        "error_handling.panic": {
+          "type": "noul",
+          "noul": 0.79
+        },
+        "async.guard_across_await": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "concurrency.check_then_act": {
+          "type": "noul",
+          "noul": 0.43
+        },
+        "concurrency.lock_scope": {
+          "type": "noul",
+          "noul": 0.08
         },
         "idiom.clarity": {
-          "confidence": 0.61,
-          "legend": {},
+          "type": "score",
+          "score": 0.06,
           "probabilities": {
-            "0": 0.74,
-            "1": 0.25,
-            "2": 0.01
+            "0": 0.95,
+            "1": 0.05,
+            "2": 0.0
           },
-          "score": 0.26,
-          "type": "score"
+          "confidence": 0.92,
+          "legend": {}
         },
-        "tokio.async_mutex_unneeded": {
-          "noul": 0.05,
-          "type": "noul"
+        "api.breaking_change": {
+          "type": "noul",
+          "noul": 0.1
         }
       },
-      "model": "jev-1.13.0",
       "usage": {
         "input_tokens": 0
       }
     },
-    "8c33410885aff7f3": {
+    "3eb003249460538d": {
+      "model": "jev-1.13.0",
       "answers": {
-        "category": {
-          "choice": "not_supported",
-          "confidence": 0.82,
+        "support": {
+          "type": "choice",
+          "choice": "refuted",
           "probabilities": {
-            "debatable_tradeoff": 0.01,
-            "not_supported": 0.87,
-            "real_defect": 0.12,
-            "style_preference": 0.0
+            "insufficient_context": 0.0,
+            "refuted": 0.97,
+            "supported": 0.03
           },
-          "type": "choice"
+          "confidence": 0.96
         },
         "severity": {
-          "choice": "critical",
-          "confidence": 0.4,
+          "type": "score",
+          "score": 2.29,
           "probabilities": {
-            "critical": 0.54,
-            "high": 0.27,
-            "low": 0.01,
-            "medium": 0.18
+            "0": 0.06,
+            "1": 0.2,
+            "2": 0.12,
+            "3": 0.62
           },
-          "type": "choice"
+          "confidence": 0.29
         },
-        "supported": {
-          "noul": 0.17,
-          "type": "noul"
+        "category": {
+          "type": "choice",
+          "choice": "real_defect",
+          "probabilities": {
+            "debatable_tradeoff": 0.28,
+            "real_defect": 0.7,
+            "style_preference": 0.02
+          },
+          "confidence": 0.55
         }
       },
-      "model": "jev-1.13.0",
       "usage": {
         "input_tokens": 0
       }

@@ -272,6 +272,7 @@ struct Metrics {
     clean_bait_dim_flag: usize,
     true_claims_reported: usize,
     true_claims_dismissed: usize,
+    true_claims_insufficient: usize,
     bait_claims_reported: usize,
     bait_claims_dismissed: usize,
     input_tokens: u64,
@@ -300,6 +301,7 @@ impl Metrics {
             self.buggy_flagged += usize::from(hit);
             self.true_claims_reported += usize::from(verdict == "report");
             self.true_claims_dismissed += usize::from(verdict == "dismiss");
+            self.true_claims_insufficient += usize::from(verdict == "insufficient_context");
         } else {
             self.clean += 1;
             hit = !flagged_dims.is_empty();
@@ -332,7 +334,7 @@ impl Metrics {
             "triage recall (buggy fixtures flagged in an expected dimension): {}/{} ({:.0}%)\n\
              clean fixtures with any triage flag: {}/{} ({:.0}%)\n\
              clean fixtures flagged in the bait dimension: {}/{} ({:.0}%)\n\
-             true claims verified as `report`: {}/{} ({:.0}%), dismissed: {}\n\
+             true claims verified as `report`: {}/{} ({:.0}%), insufficient_context: {}, dismissed: {}\n\
              bait claims verified as `report` (false positives): {}/{} ({:.0}%), dismissed: {}\n\
              Jev requests: {}, input tokens: {}, cost: ${:.5}",
             self.buggy_flagged,
@@ -347,6 +349,7 @@ impl Metrics {
             self.true_claims_reported,
             self.buggy,
             pct(self.true_claims_reported, self.buggy),
+            self.true_claims_insufficient,
             self.true_claims_dismissed,
             self.bait_claims_reported,
             self.clean,
