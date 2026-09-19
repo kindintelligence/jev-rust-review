@@ -1,0 +1,10 @@
+description = "public function signature changed and a public field removed"
+file = "src/lib.rs"
+expected_dimensions = ["api"]
+
+[claim]
+dimension = "api"
+start = "pub fn parse(input: &str, strict: bool) -> Result<Config, ParseError> {"
+end = "pub fn parse(input: &str, strict: bool) -> Result<Config, ParseError> {"
+text = "The public function parse gained a required second parameter strict: bool, so every existing caller that writes parse(input) no longer compiles."
+severity = "high"

@@ -1,0 +1,10 @@
+description = "fsync and rename results ignored when persisting a file"
+file = "src/store.rs"
+expected_dimensions = ["error_handling"]
+
+[claim]
+dimension = "error_handling"
+start = "let _ = file.sync_all();"
+end = "std::fs::rename(&tmp, path).ok();"
+text = "save ignores the Results of file.sync_all() and std::fs::rename with let _ = and .ok(), so a failed flush or rename is reported to the caller as success and data can be lost."
+severity = "high"

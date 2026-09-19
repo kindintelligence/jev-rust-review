@@ -1,0 +1,122 @@
+{
+  "model": "jev-1.13.0",
+  "note": "Recorded from the live Jev API by tests/eval.rs live_eval; replayed offline.",
+  "responses": {
+    "293930acdee38737": {
+      "answers": {
+        "api.breaking_change": {
+          "noul": 0.05,
+          "type": "noul"
+        },
+        "correctness.logic": {
+          "noul": 0.03,
+          "type": "noul"
+        },
+        "idiom.clarity": {
+          "confidence": 0.92,
+          "legend": {},
+          "probabilities": {
+            "0": 0.96,
+            "1": 0.02,
+            "2": 0.02
+          },
+          "score": 0.05,
+          "type": "score"
+        },
+        "security.injection": {
+          "noul": 0.03,
+          "type": "noul"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 0
+      }
+    },
+    "795434fd8c4d49b7": {
+      "answers": {
+        "api.breaking_change": {
+          "noul": 0.18,
+          "type": "noul"
+        },
+        "async.blocking_call": {
+          "noul": 0.98,
+          "type": "noul"
+        },
+        "correctness.logic": {
+          "noul": 0.42,
+          "type": "noul"
+        },
+        "error_handling.lossy": {
+          "noul": 0.24,
+          "type": "noul"
+        },
+        "idiom.clarity": {
+          "confidence": 0.33,
+          "legend": {},
+          "probabilities": {
+            "0": 0.44,
+            "1": 0.55,
+            "2": 0.01
+          },
+          "score": 0.57,
+          "type": "score"
+        },
+        "ownership.signature": {
+          "noul": 0.28,
+          "type": "noul"
+        },
+        "security.injection": {
+          "noul": 0.66,
+          "type": "noul"
+        },
+        "security.unbounded_input": {
+          "noul": 0.81,
+          "type": "noul"
+        },
+        "type_design.loose_types": {
+          "noul": 0.1,
+          "type": "noul"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 0
+      }
+    },
+    "86970d499b1f463f": {
+      "answers": {
+        "category": {
+          "choice": "real_defect",
+          "confidence": 0.87,
+          "probabilities": {
+            "debatable_tradeoff": 0.09,
+            "not_supported": 0.01,
+            "real_defect": 0.9,
+            "style_preference": 0.0
+          },
+          "type": "choice"
+        },
+        "severity": {
+          "choice": "medium",
+          "confidence": 0.42,
+          "probabilities": {
+            "critical": 0.05,
+            "high": 0.38,
+            "low": 0.0,
+            "medium": 0.56
+          },
+          "type": "choice"
+        },
+        "supported": {
+          "noul": 0.94,
+          "type": "noul"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 0
+      }
+    }
+  }
+}

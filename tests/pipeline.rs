@@ -607,9 +607,24 @@ async fn verify_rereads_code_and_marks_lines() {
     assert_eq!(out.status, "dry_run");
     let p = &out.payloads.unwrap()[0]["body"];
     let code = p["state"]["code"].as_str().unwrap();
-    assert!(code.contains(">        let mut guard = self.value.lock().unwrap();"));
-    assert!(code.contains(">        *guard = fetch().await;"));
-    assert!(code.contains("         *guard\n"), "{code}");
+    assert!(
+        code.contains(">+        let mut guard = self.value.lock().unwrap();"),
+        "{code}"
+    );
+    assert!(code.contains(">+        *guard = fetch().await;"));
+    // Line 11 is added by the change but outside the claim; the removed
+    // line shows the old side.
+    assert!(code.contains(" +        *guard\n"), "{code}");
+    assert!(
+        code.contains(" -        *self.value.lock().unwrap()\n"),
+        "{code}"
+    );
+    assert!(
+        p["state"]["facts"]
+            .to_string()
+            .contains("not released by `.await`"),
+        "facts gated in by .await"
+    );
     assert!(
         p["state"].get("severity").is_none(),
         "proposed severity must not reach Jev"

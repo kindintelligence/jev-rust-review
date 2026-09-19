@@ -396,6 +396,24 @@ impl Git {
         self.run_str(&args)
     }
 
+    /// Unified diff for a single repo-relative file within a scope.
+    pub fn diff_path(&self, rs: &ResolvedScope, rel: &str) -> Result<String> {
+        let rel = safe_rel_path(rel)?;
+        let mut args: Vec<&str> = vec![
+            "diff",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--unified=3",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+        ];
+        args.extend(rs.diff_args.iter().map(String::as_str));
+        args.push("--");
+        args.push(&rel);
+        self.run_str(&args)
+    }
+
     /// Untracked, non-ignored files (only for working-tree scopes).
     pub fn untracked(&self, rs: &ResolvedScope) -> Result<Vec<String>> {
         if !rs.include_untracked {

@@ -1,0 +1,11 @@
+description = "untagged enum whose variants overlap, so refunds deserialize as payments"
+file = "src/event.rs"
+expected_dimensions = ["serde"]
+deps = ['serde = { version = "1", features = ["derive"] }']
+
+[claim]
+dimension = "serde"
+start = "#[serde(untagged)]"
+end = "Refund { order_id: String, amount: u64, reason: Option<String> },"
+text = "Event is now #[serde(untagged)], and a Refund payload also matches the Payment variant (same order_id and amount fields, reason is optional), so refunds silently deserialize as payments."
+severity = "critical"

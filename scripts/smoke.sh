@@ -150,7 +150,7 @@ send({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {
         "claim": "A std::sync::MutexGuard is held across the await of fetch() in refresh.",
         "severity": "high"}]}}})
 v = json.loads(wait_for(4)["result"]["content"][0]["text"])
-if v["status"] != "dry_run" or ">        *guard = fetch().await;" not in v["payloads"][0]["body"]["state"]["code"]:
+if v["status"] != "dry_run" or ">+        *guard = fetch().await;" not in v["payloads"][0]["body"]["state"]["code"]:
     fail("verify dry run: " + json.dumps(v)[:3000])
 
 send({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {

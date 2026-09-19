@@ -1,0 +1,9 @@
+description = "get_unchecked after an explicit bounds check, with a SAFETY comment"
+file = "src/sum.rs"
+
+[claim]
+dimension = "unsafe"
+start = "unsafe { *values.get_unchecked(i) }"
+end = "unsafe { *values.get_unchecked(i) }"
+text = "sum_prefix calls get_unchecked with index i, which can read out of bounds and is undefined behaviour."
+severity = "critical"

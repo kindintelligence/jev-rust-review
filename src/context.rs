@@ -161,7 +161,7 @@ fn imports(src: &str) -> String {
 }
 
 /// Map removed lines to the new-file line they sit before.
-fn removed_anchors(hunks: &[Hunk]) -> BTreeMap<u32, Vec<String>> {
+pub fn removed_anchors(hunks: &[Hunk]) -> BTreeMap<u32, Vec<String>> {
     let mut m: BTreeMap<u32, Vec<String>> = BTreeMap::new();
     for h in hunks {
         let mut pending: Vec<String> = Vec::new();

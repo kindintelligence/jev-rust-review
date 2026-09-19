@@ -1,0 +1,9 @@
+description = "an ordinary for loop that could be an iterator chain"
+file = "src/stats.rs"
+
+[claim]
+dimension = "idiom"
+start = "for r in readings {"
+end = "for r in readings {"
+text = "The for loop in summarize should be rewritten as an iterator chain with filter and fold."
+severity = "low"

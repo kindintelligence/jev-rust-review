@@ -1,0 +1,11 @@
+description = "std::sync::MutexGuard held across .await in an async method"
+file = "src/cache.rs"
+expected_dimensions = ["async"]
+deps = ['tokio = { version = "1", features = ["full"] }']
+
+[claim]
+dimension = "async"
+start = "let mut guard = self.inner.lock()"
+end = "guard.value = fresh;"
+text = "In refresh, a std::sync::MutexGuard named guard is held across the await of fetch_remote, so other tasks on the same worker block on the lock and a re-entrant call deadlocks."
+severity = "high"

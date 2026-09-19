@@ -1,0 +1,130 @@
+{
+  "model": "jev-1.13.0",
+  "note": "Recorded from the live Jev API by tests/eval.rs live_eval; replayed offline.",
+  "responses": {
+    "0d8070869ac3303c": {
+      "answers": {
+        "api.breaking_change": {
+          "noul": 0.13,
+          "type": "noul"
+        },
+        "async.blocking_call": {
+          "noul": 0.12,
+          "type": "noul"
+        },
+        "async.select_cancellation": {
+          "noul": 0.91,
+          "type": "noul"
+        },
+        "async.sequential_awaits": {
+          "noul": 0.21,
+          "type": "noul"
+        },
+        "correctness.bounds": {
+          "noul": 0.06,
+          "type": "noul"
+        },
+        "correctness.logic": {
+          "noul": 0.38,
+          "type": "noul"
+        },
+        "error_handling.lossy": {
+          "noul": 0.11,
+          "type": "noul"
+        },
+        "error_handling.panic": {
+          "noul": 0.11,
+          "type": "noul"
+        },
+        "idiom.clarity": {
+          "confidence": 0.66,
+          "legend": {},
+          "probabilities": {
+            "0": 0.78,
+            "1": 0.21,
+            "2": 0.01
+          },
+          "score": 0.23,
+          "type": "score"
+        },
+        "performance.repeated_work": {
+          "noul": 0.09,
+          "type": "noul"
+        },
+        "tokio.no_shutdown": {
+          "noul": 0.76,
+          "type": "noul"
+        },
+        "tokio.select_not_cancel_safe": {
+          "noul": 0.94,
+          "type": "noul"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 0
+      }
+    },
+    "2efeff66f5976d3b": {
+      "answers": {
+        "category": {
+          "choice": "real_defect",
+          "confidence": 0.92,
+          "probabilities": {
+            "debatable_tradeoff": 0.01,
+            "not_supported": 0.05,
+            "real_defect": 0.94,
+            "style_preference": 0.0
+          },
+          "type": "choice"
+        },
+        "severity": {
+          "choice": "critical",
+          "confidence": 0.65,
+          "probabilities": {
+            "critical": 0.74,
+            "high": 0.24,
+            "low": 0.0,
+            "medium": 0.02
+          },
+          "type": "choice"
+        },
+        "supported": {
+          "noul": 0.73,
+          "type": "noul"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 0
+      }
+    },
+    "df14075796a05e39": {
+      "answers": {
+        "correctness.logic": {
+          "noul": 0.1,
+          "type": "noul"
+        },
+        "idiom.clarity": {
+          "confidence": 0.0,
+          "legend": {},
+          "probabilities": {
+            "0": 0.39,
+            "1": 0.18,
+            "2": 0.43
+          },
+          "score": 1.05,
+          "type": "score"
+        },
+        "tokio.no_shutdown": {
+          "noul": 0.08,
+          "type": "noul"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 0
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+description = "blocking file I/O and thread::sleep inside an async function"
+file = "src/handler.rs"
+expected_dimensions = ["async"]
+deps = ['tokio = { version = "1", features = ["full"] }']
+
+[claim]
+dimension = "async"
+start = "let body = std::fs::read_to_string(&path)?;"
+end = "std::thread::sleep(Duration::from_millis(200));"
+text = "load_report is async but calls std::fs::read_to_string and std::thread::sleep directly, blocking the Tokio worker thread instead of using tokio::fs or spawn_blocking."
+severity = "medium"

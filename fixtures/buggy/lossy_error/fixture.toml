@@ -1,0 +1,10 @@
+description = "map_err discards the underlying I/O and parse errors"
+file = "src/config.rs"
+expected_dimensions = ["error_handling"]
+
+[claim]
+dimension = "error_handling"
+start = "let text = std::fs::read_to_string(path).map_err(|_| ConfigError::Invalid)?;"
+end = ".map_err(|_| ConfigError::Invalid)?;"
+text = "load maps both the file read error and the TOML parse error to ConfigError::Invalid with map_err(|_| ...), discarding the original error so callers cannot tell a missing file from a syntax error."
+severity = "medium"

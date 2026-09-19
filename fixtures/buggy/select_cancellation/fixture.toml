@@ -1,0 +1,11 @@
+description = "read_exact raced in a select! loop loses partially read frames"
+file = "src/conn.rs"
+expected_dimensions = ["async"]
+deps = ['tokio = { version = "1", features = ["full"] }']
+
+[claim]
+dimension = "async"
+start = "res = stream.read_exact(&mut header)"
+end = "res = stream.read_exact(&mut header)"
+text = "In run, stream.read_exact is raced inside tokio::select! in a loop; when the tick branch wins, the partially read header bytes are dropped and the frame stream becomes misaligned."
+severity = "high"

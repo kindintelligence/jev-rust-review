@@ -1,0 +1,10 @@
+description = "std Mutex guard confined to a block that ends before the await"
+file = "src/counter.rs"
+deps = ['tokio = { version = "1", features = ["full"] }']
+
+[claim]
+dimension = "async"
+start = "let mut n = self.count.lock().unwrap();"
+end = "notify(snapshot).await;"
+text = "bump holds the std::sync::MutexGuard n across the await of notify, blocking the executor."
+severity = "high"

@@ -1,0 +1,91 @@
+{
+  "model": "jev-1.13.0",
+  "note": "Recorded from the live Jev API by tests/eval.rs live_eval; replayed offline.",
+  "responses": {
+    "078ade2592694eb7": {
+      "answers": {
+        "api.breaking_change": {
+          "noul": 0.96,
+          "type": "noul"
+        },
+        "correctness.bounds": {
+          "noul": 0.84,
+          "type": "noul"
+        },
+        "correctness.logic": {
+          "noul": 0.45,
+          "type": "noul"
+        },
+        "correctness.overflow": {
+          "noul": 0.07,
+          "type": "noul"
+        },
+        "idiom.clarity": {
+          "confidence": 0.46,
+          "legend": {},
+          "probabilities": {
+            "0": 0.65,
+            "1": 0.33,
+            "2": 0.02
+          },
+          "score": 0.36,
+          "type": "score"
+        },
+        "performance.repeated_work": {
+          "noul": 0.04,
+          "type": "noul"
+        },
+        "type_design.loose_types": {
+          "noul": 0.14,
+          "type": "noul"
+        },
+        "unsafe.missing_safety_comment": {
+          "noul": 0.94,
+          "type": "noul"
+        },
+        "unsafe.undefined_behaviour": {
+          "noul": 0.96,
+          "type": "noul"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 0
+      }
+    },
+    "4903e1586736a681": {
+      "answers": {
+        "category": {
+          "choice": "real_defect",
+          "confidence": 0.98,
+          "probabilities": {
+            "debatable_tradeoff": 0.01,
+            "not_supported": 0.01,
+            "real_defect": 0.98,
+            "style_preference": 0.0
+          },
+          "type": "choice"
+        },
+        "severity": {
+          "choice": "critical",
+          "confidence": 0.98,
+          "probabilities": {
+            "critical": 0.99,
+            "high": 0.01,
+            "low": 0.0,
+            "medium": 0.0
+          },
+          "type": "choice"
+        },
+        "supported": {
+          "noul": 0.93,
+          "type": "noul"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 0
+      }
+    }
+  }
+}

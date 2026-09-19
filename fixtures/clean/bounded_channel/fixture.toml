@@ -1,0 +1,10 @@
+description = "bounded mpsc channel with an owned, awaited worker task"
+file = "src/pipeline.rs"
+deps = ['tokio = { version = "1", features = ["full"] }']
+
+[claim]
+dimension = "async"
+start = "let (tx, mut rx) = mpsc::channel::<Job>(64);"
+end = "let worker = tokio::spawn(async move {"
+text = "run creates an unbounded channel and a detached task, so memory can grow without limit and worker errors are lost."
+severity = "high"

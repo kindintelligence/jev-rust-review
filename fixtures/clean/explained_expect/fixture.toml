@@ -1,0 +1,10 @@
+description = "expect on a compile-time-constant regex, with an explanation"
+file = "src/ident.rs"
+deps = ['regex = "1"']
+
+[claim]
+dimension = "error_handling"
+start = ".expect(\"IDENT is a valid regex literal\")"
+end = ".expect(\"IDENT is a valid regex literal\")"
+text = "is_ident calls expect on Regex::new, which can panic at runtime on invalid input."
+severity = "high"

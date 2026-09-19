@@ -1,0 +1,10 @@
+description = "Arc::clone moved into spawned tasks"
+file = "src/workers.rs"
+deps = ['tokio = { version = "1", features = ["full"] }']
+
+[claim]
+dimension = "ownership"
+start = "let state = Arc::clone(&state);"
+end = "let state = Arc::clone(&state);"
+text = "Arc::clone(&state) inside the loop is an unnecessary expensive clone of the shared state and should borrow instead."
+severity = "medium"

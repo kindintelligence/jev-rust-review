@@ -1,0 +1,9 @@
+description = "unwrap inside a unit test"
+file = "src/parse.rs"
+
+[claim]
+dimension = "error_handling"
+start = "let n = parse_port(\"8080\").unwrap();"
+end = "let n = parse_port(\"8080\").unwrap();"
+text = "The call to unwrap on parse_port can panic at runtime and should be replaced with proper error handling."
+severity = "medium"

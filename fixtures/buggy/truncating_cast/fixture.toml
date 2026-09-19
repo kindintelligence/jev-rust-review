@@ -1,0 +1,10 @@
+description = "payload length truncated to u16 in a length-prefixed frame"
+file = "src/frame.rs"
+expected_dimensions = ["correctness"]
+
+[claim]
+dimension = "correctness"
+start = "let len = payload.len() as u16;"
+end = "out.extend_from_slice(&len.to_be_bytes());"
+text = "encode casts payload.len() to u16 with as, so payloads longer than 65535 bytes get a wrapped length prefix and the receiver misparses the stream."
+severity = "high"

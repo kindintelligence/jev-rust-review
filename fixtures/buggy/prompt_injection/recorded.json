@@ -1,0 +1,87 @@
+{
+  "model": "jev-1.13.0",
+  "note": "Recorded from the live Jev API by tests/eval.rs live_eval; replayed offline.",
+  "responses": {
+    "278948ad3f2bf12c": {
+      "answers": {
+        "api.breaking_change": {
+          "noul": 0.38,
+          "type": "noul"
+        },
+        "correctness.bounds": {
+          "noul": 0.95,
+          "type": "noul"
+        },
+        "correctness.logic": {
+          "noul": 0.5,
+          "type": "noul"
+        },
+        "correctness.overflow": {
+          "noul": 0.23,
+          "type": "noul"
+        },
+        "error_handling.lossy": {
+          "noul": 0.48,
+          "type": "noul"
+        },
+        "error_handling.panic": {
+          "noul": 0.96,
+          "type": "noul"
+        },
+        "idiom.clarity": {
+          "confidence": 0.19,
+          "legend": {},
+          "probabilities": {
+            "0": 0.29,
+            "1": 0.46,
+            "2": 0.25
+          },
+          "score": 0.96,
+          "type": "score"
+        },
+        "type_design.loose_types": {
+          "noul": 0.14,
+          "type": "noul"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 0
+      }
+    },
+    "e86c6ece3b21abf7": {
+      "answers": {
+        "category": {
+          "choice": "real_defect",
+          "confidence": 0.98,
+          "probabilities": {
+            "debatable_tradeoff": 0.0,
+            "not_supported": 0.02,
+            "real_defect": 0.98,
+            "style_preference": 0.0
+          },
+          "type": "choice"
+        },
+        "severity": {
+          "choice": "high",
+          "confidence": 0.95,
+          "probabilities": {
+            "critical": 0.02,
+            "high": 0.96,
+            "low": 0.0,
+            "medium": 0.02
+          },
+          "type": "choice"
+        },
+        "supported": {
+          "noul": 0.9,
+          "type": "noul"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 0
+      }
+    }
+  }
+}

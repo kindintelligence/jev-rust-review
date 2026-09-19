@@ -1,0 +1,10 @@
+description = "check-then-insert across two separate lock acquisitions"
+file = "src/registry.rs"
+expected_dimensions = ["concurrency"]
+
+[claim]
+dimension = "concurrency"
+start = "if self.users.lock().unwrap().contains_key(&name) {"
+end = "self.users.lock().unwrap().insert(name, id);"
+text = "register checks contains_key and then inserts under two separate lock acquisitions, so two threads can both pass the check and register the same name twice."
+severity = "high"

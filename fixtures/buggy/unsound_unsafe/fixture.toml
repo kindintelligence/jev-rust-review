@@ -1,0 +1,10 @@
+description = "get_unchecked with a caller-controlled index and no bounds check"
+file = "src/table.rs"
+expected_dimensions = ["unsafe"]
+
+[claim]
+dimension = "unsafe"
+start = "pub fn lookup(&self, index: usize) -> u32 {"
+end = "unsafe { *self.values.get_unchecked(index) }"
+text = "lookup is a safe public function that calls get_unchecked with a caller-supplied index and no bounds check, so lookup(values.len()) reads out of bounds, which is undefined behaviour."
+severity = "critical"
