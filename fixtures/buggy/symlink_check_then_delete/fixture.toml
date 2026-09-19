@@ -1,0 +1,12 @@
+description = "a recursive delete checks for a symlink by path and then acts on the path again"
+file = "src/purge.rs"
+expected_dimensions = ["security", "concurrency"]
+tool_catches = false
+source = "CVE-2022-21658, std::fs::remove_dir_all: the symlink check and the delete were separate steps, so a directory could be swapped for a symlink in between: https://blog.rust-lang.org/2022/01/20/cve-2022-21658/"
+
+[claim]
+dimension = "security"
+start = "let meta = fs::symlink_metadata(&path)?;"
+end = "fs::remove_dir(&path)?;"
+text = "purge checks symlink_metadata(&path) and then recurses into the same path by name; another process can replace the directory with a symlink between the check and the recursion, so a privileged purge deletes files outside the tree."
+severity = "high"

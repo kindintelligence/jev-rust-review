@@ -1,0 +1,11 @@
+description = "an I/O error is read and then flattened into the Parse variant, losing its kind and source"
+file = "src/counter.rs"
+expected_dimensions = ["error_handling"]
+tool_catches = false
+
+[claim]
+dimension = "error_handling"
+start = "let text = std::fs::read_to_string(path)"
+end = '.map_err(|e| StoreError::Parse(format!("cannot load counter: {e}")))?;'
+text = "load_counter maps the std::io::Error from read_to_string into StoreError::Parse with format!, although StoreError::Io exists in error.rs to carry it; callers can no longer tell a missing file from bad contents, and the error's kind and source are lost."
+severity = "medium"

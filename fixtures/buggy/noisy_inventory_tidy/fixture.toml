@@ -1,0 +1,11 @@
+description = "a 30-function tidy-up; one rewrite swaps the operands of a saturating subtraction"
+file = "src/stock.rs"
+expected_dimensions = ["correctness"]
+tool_catches = false
+
+[claim]
+dimension = "correctness"
+start = "reserved.saturating_sub(on_hand)"
+end = "reserved.saturating_sub(on_hand)"
+text = "available now returns reserved.saturating_sub(on_hand), with the operands swapped; it should be on_hand minus reserved, so it reports zero stock whenever stock exceeds reservations and a positive number when everything is reserved."
+severity = "high"

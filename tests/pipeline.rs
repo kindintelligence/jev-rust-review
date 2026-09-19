@@ -92,7 +92,7 @@ async fn project_facts_detected() {
     );
     assert_eq!(out.active_profiles, vec!["tokio".to_string()]);
     assert!(out.cargo.enabled);
-    assert!(out.cargo.commands[0].starts_with("cargo check"));
+    assert!(out.cargo.commands[0].starts_with("cargo test"));
 }
 
 #[tokio::test]
@@ -414,7 +414,7 @@ async fn live_mock(high: &[&str]) -> (MockServer, Config) {
 async fn flags_follow_thresholds() {
     let r = base_repo();
     r.write("src/lib.rs", AFTER);
-    let (_s, cfg) = live_mock(&["async.guard_across_await"]).await;
+    let (_s, cfg) = live_mock(&["concurrency.lock_scope"]).await;
     let out = review::evaluate(
         &cfg,
         &Client::new(&cfg),
@@ -425,11 +425,11 @@ async fn flags_follow_thresholds() {
     .unwrap();
     assert_eq!(out.status, "ok");
     assert_eq!(out.flagged.len(), 1);
-    assert_eq!(out.flagged[0].question, "async.guard_across_await");
+    assert_eq!(out.flagged[0].question, "concurrency.lock_scope");
     assert_eq!(out.flagged[0].lines, (8, 12));
     assert!(
         out.references
-            .contains(&"references/dimensions/async.md".to_string())
+            .contains(&"references/dimensions/concurrency.md".to_string())
     );
     assert!(
         out.references
@@ -440,7 +440,7 @@ async fn flags_follow_thresholds() {
 
     // Raising the threshold via config un-flags it.
     let mut strict = cfg.clone();
-    strict.triage_thresholds.insert("async".into(), 0.95);
+    strict.triage_thresholds.insert("concurrency".into(), 0.95);
     let out = review::evaluate(
         &strict,
         &Client::new(&strict),
@@ -549,7 +549,7 @@ async fn partial_answers_are_reported_per_unit() {
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "model": "jev-1.13.0",
-            "answers": {"async.guard_across_await": {"type": "noul", "noul": 0.9}},
+            "answers": {"concurrency.lock_scope": {"type": "noul", "noul": 0.9}},
             "usage": {"input_tokens": 5}
         })))
         .mount(&server)
@@ -571,7 +571,7 @@ async fn partial_answers_are_reported_per_unit() {
     assert!(
         out.flagged
             .iter()
-            .any(|f| f.question == "async.guard_across_await")
+            .any(|f| f.question == "concurrency.lock_scope")
     );
 }
 

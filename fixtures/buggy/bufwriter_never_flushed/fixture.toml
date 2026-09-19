@@ -1,0 +1,12 @@
+description = "a BufWriter is dropped without flush, so a late write error is ignored and success is reported"
+file = "src/export.rs"
+expected_dimensions = ["error_handling", "correctness"]
+tool_catches = false
+source = "std docs, io::BufWriter: dropping flushes the buffer but ignores any error, so flush must be called before the drop: https://doc.rust-lang.org/std/io/struct.BufWriter.html"
+
+[claim]
+dimension = "error_handling"
+start = "let mut out = BufWriter::new(File::create(path)?);"
+end = "Ok(rows.len())"
+text = "export writes through a BufWriter and returns Ok(rows.len()) without calling flush; the buffered rows are written when out is dropped, where any I/O error is discarded, so a full disk yields a truncated file and a success result."
+severity = "high"

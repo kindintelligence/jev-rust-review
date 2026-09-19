@@ -6,6 +6,8 @@
     reason = "shared test helpers: failures should panic loudly"
 )]
 
+pub mod fixtures;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use wiremock::{Request, Respond, ResponseTemplate};

@@ -34,7 +34,11 @@ fn skill_names_the_real_tools() {
         .clone();
     let server_src = read("src/mcp.rs");
     let skill = read("skills/rust-review/SKILL.md");
-    for tool in ["evaluate_rust_changes", "verify_rust_findings"] {
+    for tool in [
+        "cargo_diagnostics",
+        "evaluate_rust_changes",
+        "verify_rust_findings",
+    ] {
         assert!(
             server_src.contains(&format!("async fn {tool}(")),
             "{tool} missing from mcp.rs"
@@ -65,7 +69,13 @@ fn every_dimension_and_profile_has_a_reference() {
 #[test]
 fn verification_verdicts_are_documented() {
     let skill = read("skills/rust-review/SKILL.md");
-    for verdict in ["report", "insufficient_context", "uncertain", "dismiss"] {
+    for verdict in [
+        "report",
+        "insufficient_context",
+        "uncertain",
+        "dismiss",
+        "tool_reported",
+    ] {
         assert!(
             skill.contains(&format!("`verdict: {verdict}`")),
             "{verdict}"
@@ -102,4 +112,41 @@ fn tool_descriptions_describe_the_current_model() {
         src.contains("whether the diff touches tests"),
         "evaluate description lacks test facts"
     );
+}
+
+/// The headline example must be a defect no tool reports. A guard held
+/// across `.await` is Clippy's by default, so it must not come back.
+#[test]
+fn examples_lead_with_a_defect_beyond_tooling() {
+    for file in [
+        "README.md",
+        "skills/rust-review/SKILL.md",
+        "agents/rust-reviewer.md",
+    ] {
+        let text = read(file);
+        assert!(text.contains("select!"), "{file} lost its headline example");
+        assert!(
+            !text.contains("MutexGuard is held across")
+                && !text.contains("MutexGuard named guard is held across"),
+            "{file} leads with a defect Clippy reports by default"
+        );
+    }
+}
+
+/// Every lint the diagnostics tool switches on is named in its description,
+/// in plain words, so a client knows what the facts cover.
+#[test]
+fn skill_runs_the_tools_before_triage() {
+    let skill = read("skills/rust-review/SKILL.md");
+    let tools = skill.find("## 2. Collect the tool facts").unwrap();
+    let triage = skill.find("## 3. Triage with Jev").unwrap();
+    assert!(tools < triage);
+    for needed in [
+        "cargo-semver-checks",
+        "Never install",
+        "Miri",
+        "tool_covered",
+    ] {
+        assert!(skill.contains(needed), "SKILL.md lacks {needed:?}");
+    }
 }

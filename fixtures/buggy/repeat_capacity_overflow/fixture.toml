@@ -1,0 +1,12 @@
+description = "a capacity computed with an unchecked multiplication feeds an unsafe copy loop"
+file = "src/repeat.rs"
+expected_dimensions = ["unsafe", "correctness"]
+tool_catches = false
+source = "CVE-2018-1000810, std str::repeat: the capacity multiplication overflowed and unsafe code wrote past the buffer: https://rustsec.org/advisories/CVE-2018-1000810.html"
+
+[claim]
+dimension = "unsafe"
+start = "let total = pattern.len() * count;"
+end = "out.set_len(total);"
+text = "repeat computes total as pattern.len() * count with no overflow check; in a release build the product wraps, Vec::with_capacity allocates too little, and the unsafe copy loop writes count copies past the end of the buffer."
+severity = "critical"

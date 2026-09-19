@@ -7,11 +7,11 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.43
+          "noul": 0.4
         },
         "correctness.bounds": {
           "type": "noul",
-          "noul": 0.89
+          "noul": 0.91
         },
         "unsafe.memory_access": {
           "type": "noul",
@@ -19,13 +19,13 @@
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.16,
+          "score": 0.13,
           "probabilities": {
-            "0": 0.85,
-            "1": 0.15,
+            "0": 0.87,
+            "1": 0.13,
             "2": 0.0
           },
-          "confidence": 0.76,
+          "confidence": 0.8,
           "legend": {}
         },
         "api.breaking_change": {
@@ -44,9 +44,9 @@
           "type": "choice",
           "choice": "supported",
           "probabilities": {
-            "insufficient_context": 0.01,
+            "insufficient_context": 0.0,
             "refuted": 0.01,
-            "supported": 0.98
+            "supported": 0.99
           },
           "confidence": 0.98
         },

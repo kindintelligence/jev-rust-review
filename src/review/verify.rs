@@ -1,6 +1,7 @@
 //! Verification: re-read the code behind each candidate finding, ask
 //! Jev the three verification questions, and apply the verdict rules.
 
+use super::diagnostics::{ToolReport, tool_report};
 use super::types::*;
 use crate::config::{Config, USD_PER_INPUT_TOKEN};
 use crate::context::{self};
@@ -57,6 +58,16 @@ pub struct SeverityOut {
     pub confidence: f64,
 }
 
+/// The tool diagnostic that already reports a finding's defect.
+#[derive(Debug, Serialize)]
+pub struct ToolRef {
+    /// The lint or tool, as it prints its own name.
+    pub tool: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lines: Option<(u32, u32)>,
+    pub message: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct VerifyResult {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -82,8 +93,12 @@ pub struct VerifyResult {
     pub severity_agrees: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<ChoiceOut>,
-    /// `report`, `insufficient_context`, `uncertain`, `dismiss`, or
-    /// `not_verified`.
+    /// Set when `cargo_diagnostics` already reported this defect on these
+    /// lines. The tool's diagnostic is the finding; this one is a duplicate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool: Option<ToolRef>,
+    /// `report`, `insufficient_context`, `uncertain`, `dismiss`,
+    /// `tool_reported`, or `not_verified`.
     pub verdict: &'static str,
     pub report_threshold: f64,
     pub dismiss_below: f64,
@@ -376,6 +391,7 @@ fn prepare_verify(
     let root = git.root().to_path_buf();
     let rs = git.resolve(git::parse_scope(scope, &root)?)?;
     let project = ProjectInfo::load(&root);
+    let tools = tool_report(&root.display().to_string(), &rs.description);
     let mut redactions = Redactions::default();
     let mut results = Vec::new();
     let mut prepared = Vec::new();
@@ -394,10 +410,20 @@ fn prepare_verify(
             proposed_severity: f.severity.to_ascii_lowercase(),
             severity_agrees: None,
             category: None,
+            tool: tools
+                .as_deref()
+                .and_then(|t| reported_by_tool(t, &project, &f)),
             verdict: "not_verified",
             report_threshold: report_t,
             dismiss_below: cfg.dismiss_below,
         };
+        if res.tool.is_some() {
+            // Nothing to ask Jev: the tool's report is a fact.
+            res.status = "tool_reported";
+            res.verdict = "tool_reported";
+            results.push(res);
+            continue;
+        }
         match build_verify_request(cfg, &git, &rs, &project, &f, &mut redactions) {
             Ok(request) => prepared.push(VerifyPrepared { idx, request }),
             Err(e) => {
@@ -408,6 +434,30 @@ fn prepare_verify(
         results.push(res);
     }
     Ok((results, prepared, redactions))
+}
+
+/// A defect a tool reported on the same lines is never reported again. A
+/// finding names a dimension, so any lint that overlaps a question in that
+/// dimension counts; an API finding is a duplicate when cargo-semver-checks
+/// found a break in the same crate.
+fn reported_by_tool(tools: &ToolReport, project: &ProjectInfo, f: &Finding) -> Option<ToolRef> {
+    let overlap = questions::tool_overlap_for(Dimension::parse(&f.dimension)?);
+    if overlap.contains(questions::SEMVER_CHECKS)
+        && tools.semver_checked(project, &f.file)
+        && let Some(b) = tools.semver_breaks.first()
+    {
+        return Some(ToolRef {
+            tool: questions::SEMVER_CHECKS.to_string(),
+            lines: None,
+            message: format!("{}: {}", b.lint, b.summary),
+        });
+    }
+    let d = tools.covering(&f.file, &[(f.start_line, f.end_line)], &overlap)?;
+    Some(ToolRef {
+        tool: d.code.clone().unwrap_or_default(),
+        lines: Some(d.lines),
+        message: d.message.clone(),
+    })
 }
 
 fn build_verify_request(

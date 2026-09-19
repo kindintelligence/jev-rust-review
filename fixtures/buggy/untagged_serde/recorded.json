@@ -11,22 +11,22 @@
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.2,
+          "score": 0.23,
           "probabilities": {
-            "0": 0.81,
-            "1": 0.17,
+            "0": 0.79,
+            "1": 0.19,
             "2": 0.02
           },
-          "confidence": 0.7,
+          "confidence": 0.65,
           "legend": {}
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.52
+          "noul": 0.53
         },
         "serde.compatibility": {
           "type": "noul",
-          "noul": 0.88
+          "noul": 0.89
         }
       },
       "usage": {
@@ -40,22 +40,22 @@
           "type": "choice",
           "choice": "supported",
           "probabilities": {
-            "insufficient_context": 0.01,
+            "insufficient_context": 0.0,
             "refuted": 0.02,
-            "supported": 0.97
+            "supported": 0.98
           },
-          "confidence": 0.97
+          "confidence": 0.96
         },
         "severity": {
           "type": "score",
-          "score": 2.54,
+          "score": 2.56,
           "probabilities": {
             "0": 0.0,
             "1": 0.0,
-            "2": 0.45,
-            "3": 0.55
+            "2": 0.43,
+            "3": 0.5700000000000001
           },
-          "confidence": 0.54
+          "confidence": 0.56
         },
         "category": {
           "type": "choice",

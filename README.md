@@ -106,11 +106,14 @@ claude --plugin-dir "$(pwd)"
 A finding looks like this:
 
 ```text
-Critical: src/cache.rs:81-92
-A std::sync::MutexGuard is held across `.await` in `refresh()`. ...
-Fix: copy the needed value out, drop the guard, then await.
-Confidence: High (guard binding at :83 is live at the await on :88)
-Jev: claim supported 0.93 · severity "critical" (P(high or above) 0.88, confidence 0.81)
+High · async · src/relay.rs:9-14
+`forward(&tx, event)` is raced against `heartbeat.tick()` in `tokio::select!`.
+`forward` awaits `tx.send(event)`. When the tick wins while the channel is
+full, the send future is dropped with the event inside it: the event is lost.
+Why no tool sees it: cancellation safety is documented in prose, not in types.
+Fix: reserve first (`tx.reserve().await`), then send on the permit.
+Confidence: High (`forward` in src/sink.rs:9 awaits `Sender::send`)
+Jev: claim supported 0.91 · severity "high" (P(high or above) 0.84, confidence 0.78)
 ```
 
 Every number in a report comes from Jev and says so. Claude states its own confidence in words. Sometimes Jev answers `insufficient_context`. That means the finding depends on code outside the excerpt, such as lock ordering or API callers. Claude keeps such a finding only when its own confidence is High, and says Jev could not verify it.

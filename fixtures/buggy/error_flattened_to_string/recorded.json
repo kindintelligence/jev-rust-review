@@ -1,0 +1,115 @@
+{
+  "model": "jev-1.13.0",
+  "note": "Recorded from the live Jev API by tests/eval.rs live_eval; replayed offline.",
+  "responses": {
+    "4a67565acf600db8": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "correctness.logic": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "type_design.loose_types": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "idiom.clarity": {
+          "type": "score",
+          "score": 0.03,
+          "probabilities": {
+            "0": 0.97,
+            "1": 0.03,
+            "2": 0.0
+          },
+          "confidence": 0.95,
+          "legend": {}
+        },
+        "api.breaking_change": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "usage": {
+        "input_tokens": 0
+      }
+    },
+    "c9d56758f370f4f6": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "correctness.logic": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "error_handling.lossy": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "idiom.clarity": {
+          "type": "score",
+          "score": 0.0,
+          "probabilities": {
+            "0": 1.0,
+            "1": 0.0,
+            "2": 0.0
+          },
+          "confidence": 1.0,
+          "legend": {}
+        },
+        "api.breaking_change": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "security.injection": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "security.unbounded_input": {
+          "type": "noul",
+          "noul": 0.86
+        }
+      },
+      "usage": {
+        "input_tokens": 0
+      }
+    },
+    "0cb985cc972d9f72": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "support": {
+          "type": "choice",
+          "choice": "supported",
+          "probabilities": {
+            "insufficient_context": 0.15,
+            "refuted": 0.01,
+            "supported": 0.84
+          },
+          "confidence": 0.76
+        },
+        "severity": {
+          "type": "score",
+          "score": 1.0,
+          "probabilities": {
+            "0": 0.0,
+            "1": 1.0,
+            "2": 0.0,
+            "3": 0.0
+          },
+          "confidence": 1.0
+        },
+        "category": {
+          "type": "choice",
+          "choice": "real_defect",
+          "probabilities": {
+            "debatable_tradeoff": 0.45,
+            "real_defect": 0.55,
+            "style_preference": 0.0
+          },
+          "confidence": 0.32
+        }
+      },
+      "usage": {
+        "input_tokens": 0
+      }
+    }
+  }
+}

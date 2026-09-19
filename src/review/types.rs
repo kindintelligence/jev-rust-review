@@ -57,6 +57,21 @@ pub struct Flag {
     pub threshold: f64,
 }
 
+/// A Jev flag on lines where a tool already reported the same defect. The
+/// tool's diagnostic stands; the flag is kept here only as a hint that the
+/// diagnostic deserves a close look.
+#[derive(Debug, Serialize)]
+pub struct CoveredFlag {
+    pub unit: String,
+    pub file: String,
+    pub question: &'static str,
+    pub signal: f64,
+    /// The lint or tool that reported it, as it prints its own name.
+    pub tool: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_lines: Option<(u32, u32)>,
+}
+
 #[derive(Debug, Serialize, Default)]
 pub struct DepChange {
     pub name: String,
@@ -137,6 +152,13 @@ pub struct EvaluateOutput {
     pub project: ProjectInfo,
     pub active_profiles: Vec<String>,
     pub flagged: Vec<Flag>,
+    /// Flags dropped because `cargo_diagnostics` already reported the defect
+    /// on the same lines. Never report these as findings of their own.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tool_covered: Vec<CoveredFlag>,
+    /// Whether `cargo_diagnostics` had run for this scope, so that flags
+    /// could be checked against it.
+    pub tool_diagnostics_seen: bool,
     /// Reference files the reviewer should load (relative to the skill dir).
     pub references: Vec<String>,
     pub units: Vec<UnitResult>,

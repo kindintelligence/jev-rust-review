@@ -1,6 +1,7 @@
 description = "map_err discards the underlying I/O and parse errors"
 file = "src/config.rs"
 expected_dimensions = ["error_handling"]
+tool_catches = true
 
 [claim]
 dimension = "error_handling"

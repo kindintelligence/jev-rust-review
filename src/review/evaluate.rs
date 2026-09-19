@@ -2,6 +2,7 @@
 //! request per unit, and apply the triage thresholds in code.
 
 use super::cargo_facts::{lockfile_facts, manifest_facts};
+use super::diagnostics::{ToolReport, tool_report};
 use super::types::*;
 use crate::config::{Config, Profiles, USD_PER_INPUT_TOKEN};
 use crate::context::{self, FileInput, Skip, Unit};
@@ -160,7 +161,7 @@ pub fn prepare(cfg: &Config, repo: &Path, params: &EvaluateParams) -> Result<Pre
 
 /// The diff's files plus untracked `.rs` files; for a clean Path scope, the
 /// `.rs` files under the path reviewed whole. Returns `(files, whole_file)`.
-fn collect_files(git: &Git, rs: &ResolvedScope) -> Result<(Vec<FileDiff>, bool)> {
+pub(super) fn collect_files(git: &Git, rs: &ResolvedScope) -> Result<(Vec<FileDiff>, bool)> {
     let mut files = diff::parse(&git.diff(rs)?);
     let tracked: BTreeSet<String> = files.iter().map(|f| f.path().to_string()).collect();
     for u in git.untracked(rs)? {
@@ -416,6 +417,80 @@ pub fn judge(cfg: &Config, q: &'static QuestionSpec, a: &Answer) -> Option<Quest
     })
 }
 
+/// The tool diagnostic that already reports what this flag points at: one of
+/// the question's overlapping lints on the unit's changed lines, or
+/// cargo-semver-checks having given its verdict on the crate.
+fn covered_by_tool(
+    tools: &ToolReport,
+    project: &ProjectInfo,
+    unit: &Unit,
+    res: &QuestionResult,
+) -> Option<CoveredFlag> {
+    let overlap: BTreeSet<&str> = questions::spec(res.question)?
+        .tool_overlap
+        .iter()
+        .copied()
+        .collect();
+    let covered = |tool: String, tool_lines| CoveredFlag {
+        unit: unit.id.clone(),
+        file: unit.file.clone(),
+        question: res.question,
+        signal: res.signal,
+        tool,
+        tool_lines,
+    };
+    if overlap.contains(questions::SEMVER_CHECKS) && tools.semver_checked(project, &unit.file) {
+        return Some(covered(questions::SEMVER_CHECKS.to_string(), None));
+    }
+    let d = tools.covering(&unit.file, &unit.changed_lines, &overlap)?;
+    Some(covered(d.code.clone().unwrap_or_default(), Some(d.lines)))
+}
+
+/// Judge every answer in a response. The second list names the questions
+/// whose answer was missing or of the wrong type.
+fn judge_all(
+    cfg: &Config,
+    qs: &[&'static QuestionSpec],
+    r: &jev::Response,
+) -> (Vec<QuestionResult>, Vec<String>) {
+    let mut results = Vec::new();
+    let mut bad = Vec::new();
+    for q in qs {
+        match r.answer(q.id).map(|a| judge(cfg, q, &a)) {
+            Ok(Some(res)) => results.push(res),
+            Ok(None) => bad.push(format!("{}: answer type mismatch", q.id)),
+            Err(e) => bad.push(e),
+        }
+    }
+    (results, bad)
+}
+
+/// File one flagged answer: under `tool_covered` when a tool already
+/// reported the defect, otherwise under `flagged`. Returns whether the flag
+/// still stands.
+fn file_flag(
+    out: &mut EvaluateOutput,
+    tools: Option<&ToolReport>,
+    unit: &Unit,
+    res: &QuestionResult,
+) -> bool {
+    if let Some(c) = tools.and_then(|t| covered_by_tool(t, &out.project, unit, res)) {
+        out.tool_covered.push(c);
+        return false;
+    }
+    out.flagged.push(Flag {
+        unit: unit.id.clone(),
+        file: unit.file.clone(),
+        lines: unit.lines,
+        changed_lines: unit.changed_lines.clone(),
+        dimension: res.dimension,
+        question: res.question,
+        signal: res.signal,
+        threshold: res.threshold,
+    });
+    true
+}
+
 fn round3(x: f64) -> f64 {
     (x * 1000.0).round() / 1000.0
 }
@@ -451,6 +526,8 @@ pub async fn evaluate(
         active_profiles: prepared.active_profiles.iter().cloned().collect(),
         project: prepared.project,
         flagged: Vec::new(),
+        tool_covered: Vec::new(),
+        tool_diagnostics_seen: false,
         references: Vec::new(),
         units: Vec::new(),
         cargo_facts: prepared.cargo_facts,
@@ -546,6 +623,8 @@ pub async fn evaluate(
         }
     }
 
+    let tools = tool_report(&out.repo, &out.scope);
+    out.tool_diagnostics_seen = tools.is_some();
     let mut errors: Vec<String> = Vec::new();
     let mut model_seen: Option<String> = None;
     let mut refs: BTreeSet<String> = BTreeSet::new();
@@ -556,27 +635,11 @@ pub async fn evaluate(
                 out.usage.requests += 1;
                 out.usage.input_tokens += r.usage.input_tokens;
                 model_seen.get_or_insert(r.model.clone());
-                let mut results = Vec::new();
-                let mut bad = Vec::new();
-                for q in qs {
-                    match r.answer(q.id).map(|a| judge(cfg, q, &a)) {
-                        Ok(Some(res)) => results.push(res),
-                        Ok(None) => bad.push(format!("{}: answer type mismatch", q.id)),
-                        Err(e) => bad.push(e),
-                    }
-                }
+                let (results, bad) = judge_all(cfg, &qs, &r);
                 for res in results.iter().filter(|r| r.flagged) {
-                    refs.insert(questions::reference_for(res.dimension));
-                    out.flagged.push(Flag {
-                        unit: unit.id.clone(),
-                        file: unit.file.clone(),
-                        lines: unit.lines,
-                        changed_lines: unit.changed_lines.clone(),
-                        dimension: res.dimension,
-                        question: res.question,
-                        signal: res.signal,
-                        threshold: res.threshold,
-                    });
+                    if file_flag(&mut out, tools.as_deref(), &unit, res) {
+                        refs.insert(questions::reference_for(res.dimension));
+                    }
                 }
                 let status = if bad.is_empty() { "ok" } else { "partial" };
                 if !bad.is_empty() {

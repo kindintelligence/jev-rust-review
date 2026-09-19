@@ -1,6 +1,5 @@
 description = "bounded mpsc channel with an owned, awaited worker task"
 file = "src/pipeline.rs"
-deps = ['tokio = { version = "1", features = ["full"] }']
 
 [claim]
 dimension = "async"

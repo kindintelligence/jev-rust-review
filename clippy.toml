@@ -78,16 +78,18 @@ reason = "not thread-safe under a multi-threaded runtime; config is read once at
 path = "std::env::remove_var"
 reason = "not thread-safe under a multi-threaded runtime; config is read once at startup"
 
-# ── Subprocesses go through one audited door ─────────────────────────────────
-# git.rs owns the only spawn site: argument vector, no shell, scopes validated,
-# `--` separator. It carries the single #[expect(clippy::disallowed_methods)].
+# ── Subprocesses go through two audited doors ────────────────────────────────
+# git.rs owns the git spawn site: argument vector, no shell, scopes validated,
+# `--` separator. cargo_tools.rs owns the cargo spawn site: argument vector, no
+# shell, no stdin, stdout piped, every argument built in that file. Each
+# carries one #[expect(clippy::disallowed_methods)]; there are no others.
 [[disallowed-methods]]
 path = "std::process::Command::new"
-reason = "spawn only via git::run, which validates scope args and never uses a shell"
+reason = "spawn only via git.rs (git) or cargo_tools.rs (cargo); never a shell"
 
 [[disallowed-methods]]
 path = "tokio::process::Command::new"
-reason = "spawn only via git::run, which validates scope args and never uses a shell"
+reason = "spawn only via git.rs (git) or cargo_tools.rs (cargo); never a shell"
 
 [[disallowed-methods]]
 path = "std::process::exit"

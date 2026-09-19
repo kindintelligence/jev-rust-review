@@ -1,6 +1,7 @@
 description = "payload length truncated to u16 in a length-prefixed frame"
 file = "src/frame.rs"
 expected_dimensions = ["correctness"]
+tool_catches = true
 
 [claim]
 dimension = "correctness"

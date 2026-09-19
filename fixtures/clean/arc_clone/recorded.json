@@ -2,86 +2,78 @@
   "model": "jev-1.13.0",
   "note": "Recorded from the live Jev API by tests/eval.rs live_eval; replayed offline.",
   "responses": {
-    "e27cd3b9ab422e6b": {
+    "75ccb537e1997905": {
       "model": "jev-1.13.0",
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.25
-        },
-        "correctness.drop_order": {
-          "type": "noul",
-          "noul": 0.15
-        },
-        "error_handling.swallowed": {
-          "type": "noul",
-          "noul": 0.78
+          "noul": 0.2
         },
         "async.detached_task": {
           "type": "noul",
-          "noul": 0.06
+          "noul": 0.04
         },
         "async.unbounded": {
           "type": "noul",
-          "noul": 0.28
+          "noul": 0.15
         },
         "async.sequential_awaits": {
           "type": "noul",
-          "noul": 0.61
+          "noul": 0.71
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.19,
+          "score": 0.09,
           "probabilities": {
-            "0": 0.82,
-            "1": 0.18,
+            "0": 0.91,
+            "1": 0.09,
             "2": 0.0
           },
-          "confidence": 0.72,
+          "confidence": 0.86,
           "legend": {}
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.96
+          "noul": 0.09
         }
       },
       "usage": {
         "input_tokens": 0
       }
     },
-    "b759eb4510525ac4": {
+    "ca2bcb113c82cc68": {
       "model": "jev-1.13.0",
       "answers": {
         "support": {
           "type": "choice",
           "choice": "refuted",
           "probabilities": {
-            "insufficient_context": 0.02,
-            "refuted": 0.97,
+            "insufficient_context": 0.01,
+            "refuted": 0.98,
             "supported": 0.01
           },
-          "confidence": 0.95
+          "confidence": 0.97
         },
         "severity": {
           "type": "score",
-          "score": 0.3,
+          "score": 0.28,
           "probabilities": {
-            "0": 0.8,
-            "1": 0.12,
-            "2": 0.06,
+            "0": 0.82,
+            "1": 0.09,
+            "2": 0.07,
             "3": 0.02
           },
-          "confidence": 0.7
+          "confidence": 0.72
         },
         "category": {
           "type": "choice",
           "choice": "debatable_tradeoff",
           "probabilities": {
-            "debatable_tradeoff": 0.78,
-            "real_defect": 0.2,
+            "debatable_tradeoff": 0.76,
+            "real_defect": 0.22,
             "style_preference": 0.02
           },
-          "confidence": 0.66
+          "confidence": 0.65
         }
       },
       "usage": {

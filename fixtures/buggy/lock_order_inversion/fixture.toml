@@ -1,0 +1,11 @@
+description = "a new function takes two locks in the opposite order from an existing function in another file"
+file = "src/report.rs"
+expected_dimensions = ["concurrency"]
+tool_catches = false
+
+[claim]
+dimension = "concurrency"
+start = "let ledger = self.ledger.lock()"
+end = "let accounts = self.accounts.lock()"
+text = "reconcile locks ledger and then accounts, while Bank::transfer in bank.rs locks accounts and then ledger; two threads running them at the same time can each hold one lock and wait for the other, which is a deadlock."
+severity = "high"

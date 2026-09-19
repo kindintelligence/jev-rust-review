@@ -2,46 +2,42 @@
   "model": "jev-1.13.0",
   "note": "Recorded from the live Jev API by tests/eval.rs live_eval; replayed offline.",
   "responses": {
-    "36f52ffbe0c84ac3": {
+    "b4ed37b893578c01": {
       "model": "jev-1.13.0",
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.68
-        },
-        "correctness.drop_order": {
-          "type": "noul",
-          "noul": 0.39
+          "noul": 0.83
         },
         "error_handling.swallowed": {
           "type": "noul",
-          "noul": 0.98
+          "noul": 0.97
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.17,
+          "score": 0.42,
           "probabilities": {
-            "0": 0.83,
-            "1": 0.17,
-            "2": 0.0
+            "0": 0.59,
+            "1": 0.4,
+            "2": 0.01
           },
-          "confidence": 0.74,
+          "confidence": 0.37,
           "legend": {}
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.23
+          "noul": 0.26
         },
         "security.injection": {
           "type": "noul",
-          "noul": 0.15
+          "noul": 0.19
         }
       },
       "usage": {
         "input_tokens": 0
       }
     },
-    "0454b3a58b10e255": {
+    "cd02b8989c7b2d74": {
       "model": "jev-1.13.0",
       "answers": {
         "support": {
@@ -56,24 +52,24 @@
         },
         "severity": {
           "type": "score",
-          "score": 2.99,
+          "score": 2.87,
           "probabilities": {
             "0": 0.0,
-            "1": 0.0,
-            "2": 0.0,
-            "3": 1.0
+            "1": 0.01,
+            "2": 0.11,
+            "3": 0.88
           },
-          "confidence": 0.99
+          "confidence": 0.87
         },
         "category": {
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
-            "debatable_tradeoff": 0.01,
-            "real_defect": 0.99,
+            "debatable_tradeoff": 0.0,
+            "real_defect": 1.0,
             "style_preference": 0.0
           },
-          "confidence": 0.98
+          "confidence": 1.0
         }
       },
       "usage": {

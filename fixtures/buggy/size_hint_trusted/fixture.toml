@@ -1,0 +1,12 @@
+description = "unsafe writes rely on Iterator::size_hint, which safe code may get wrong"
+file = "src/append.rs"
+expected_dimensions = ["unsafe"]
+tool_catches = false
+source = "RUSTSEC-2021-0003, smallvec: buffer overflow in SmallVec::insert_many when the iterator yields more items than its size_hint: https://rustsec.org/advisories/RUSTSEC-2021-0003.html"
+
+[claim]
+dimension = "unsafe"
+start = "let room = room_for(&iter);"
+end = "out.set_len(len);"
+text = "append reserves room_for(&iter) elements, which comes from the iterator's size_hint, and then writes every item through a raw pointer with no bounds check; an iterator that yields more items than its size_hint writes past the allocation."
+severity = "critical"

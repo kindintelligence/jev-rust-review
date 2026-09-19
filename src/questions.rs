@@ -6,9 +6,13 @@
 //! - one defect per question: fan-out is cheap, and a specific id gives the
 //!   reviewer a specific place to look;
 //! - Noul criteria mirror the instruction (`true` = the defect is present);
-//! - no counting, arithmetic, line numbers, or anything a tool can answer
-//!   (clippy's `undocumented_unsafe_blocks` and `missing_safety_doc` own
-//!   "is this `unsafe` documented", so there is no question for it);
+//! - no counting, arithmetic or line numbers;
+//! - nothing a tool can answer. rustc, Clippy (with the extra lints in
+//!   `cargo_tools::EXTRA_LINTS`) and cargo-semver-checks report their own
+//!   defects as facts. Every question says in `beyond_tooling` why none of
+//!   them answers it, and lists in `tool_overlap` the lints that come close.
+//!   A flag or finding on lines where one of those lints fired is dropped,
+//!   so no defect is reported twice;
 //! - lexical gates in code decide which questions apply to a unit;
 //! - every flag rule reads exactly one answer (no consistency assumptions).
 //!
@@ -161,6 +165,15 @@ pub struct QuestionSpec {
     pub unit: UnitKind,
     /// Overrides the dimension's triage threshold for this question.
     pub threshold: Option<f64>,
+    /// One sentence: why no compiler check, lint or cargo tool answers this
+    /// question. Required; `every_question_goes_beyond_tooling` fails when
+    /// it is empty.
+    pub beyond_tooling: &'static str,
+    /// Lints and tools that report part of this defect, by the name they
+    /// print (`clippy::map_err_ignore`, `unused_must_use`,
+    /// `cargo-semver-checks`). When one of them fired on the same lines, the
+    /// tool's report stands and this question's flag is dropped.
+    pub tool_overlap: &'static [&'static str],
 }
 
 impl QuestionSpec {
@@ -180,6 +193,8 @@ impl QuestionSpec {
             skip_roles: &[],
             unit: UnitKind::RustCode,
             threshold: None,
+            beyond_tooling: "",
+            tool_overlap: &[],
         }
     }
     const fn score(
@@ -198,6 +213,8 @@ impl QuestionSpec {
             skip_roles: &[],
             unit: UnitKind::RustCode,
             threshold: None,
+            beyond_tooling: "",
+            tool_overlap: &[],
         }
     }
     const fn gate(mut self, gate: &'static [&'static [&'static str]]) -> Self {
@@ -214,6 +231,14 @@ impl QuestionSpec {
     }
     const fn manifest(mut self) -> Self {
         self.unit = UnitKind::Manifest;
+        self
+    }
+    const fn beyond(mut self, why: &'static str) -> Self {
+        self.beyond_tooling = why;
+        self
+    }
+    const fn overlaps(mut self, lints: &'static [&'static str]) -> Self {
+        self.tool_overlap = lints;
         self
     }
 
@@ -288,6 +313,12 @@ const ARITHMETIC: &str = r"[\w)\]][ \t]*[-+*]=?[ \t]*[\w(]";
 const LOOP: &str = r"\b(for|while|loop)\b|\.for_each\(|\.map\(|\.filter\(|\.fold\(";
 const LOCK_CALL: &str = r"\.lock\(\)|\.read\(\)|\.write\(\)";
 
+/// The name `tool_overlap` uses for cargo-semver-checks, which is a tool and
+/// not a lint.
+pub const SEMVER_CHECKS: &str = "cargo-semver-checks";
+/// Dioxus's own checker, which this server does not run.
+pub const DX_CHECK: &str = "dx check";
+
 use Dimension as D;
 use QuestionSpec as Q;
 
@@ -301,7 +332,9 @@ pub static CORE: &[QuestionSpec] = &[
         "A specific input or state makes the changed code produce a wrong result.",
         "The changed code produces the intended result for every input it can receive.",
     )
-    .skip(NON_PROD),
+    .skip(NON_PROD)
+    .beyond("Clippy's correctness lints match fixed shapes such as `x == x`; whether a condition does what the function is for depends on intent, which no tool has.")
+    .overlaps(&["clippy::eq_op", "clippy::if_same_then_else", "clippy::absurd_extreme_comparisons", "clippy::overly_complex_bool_expr"]),
     Q::noul(
         "correctness.bounds",
         D::Correctness,
@@ -310,16 +343,22 @@ pub static CORE: &[QuestionSpec] = &[
         "Every index and range stays within bounds and covers exactly the intended elements.",
     )
     .gate(&[&[INDEXING, r"split_at|get_unchecked|\.windows\(|\.chunks", r"len\(\)\s*[-+]\s*\d"]])
-    .skip(NON_PROD),
+    .skip(NON_PROD)
+    .beyond("rustc proves only constant indexes out of range, and `indexing_slicing` flags every index alike; which inputs reach an index is a question about the callers' data.")
+    .overlaps(&["unconditional_panic", "clippy::out_of_bounds_indexing", "clippy::indexing_slicing"]),
+    // Clippy's cast lints find every lossy `as`. What is left is whether the
+    // value can be out of range in practice.
     Q::noul(
         "correctness.cast",
         D::Correctness,
-        "Does a changed line in `code` use an `as` cast that can silently truncate, wrap, or change the sign of a value that can be out of range for the target type?",
-        "A value that can realistically be out of range is converted with `as`.",
-        "Every `as` cast converts values that always fit, or the truncation is clearly intended.",
+        "For an `as` cast in the changed lines of `code`, can the value being cast realistically be too large or negative for the target type, for example a length, a count, or a number read from input?",
+        "A cast value can realistically be outside the target type's range, so the result is silently wrong.",
+        "Every cast value always fits the target type, or the truncation is clearly intended.",
     )
     .gate(&[&[r"\bas\s+(u8|u16|u32|u64|u128|usize|i8|i16|i32|i64|i128|isize|f32|f64|char)\b"]])
-    .skip(NON_PROD),
+    .skip(NON_PROD)
+    .beyond("Clippy flags every `as` cast that could lose data; it cannot tell a length that is always small from one an attacker controls.")
+    .overlaps(&["clippy::cast_possible_truncation", "clippy::cast_sign_loss", "clippy::cast_possible_wrap"]),
     Q::noul(
         "correctness.overflow",
         D::Correctness,
@@ -331,45 +370,38 @@ pub static CORE: &[QuestionSpec] = &[
         &[r"\b(u8|u16|u32|u64|u128|usize|i8|i16|i32|i64|i128|isize)\b", r"len\(\)"],
         &[ARITHMETIC, r"\w\s*<<\s*\w"],
     ])
-    .skip(NON_PROD),
-    Q::noul(
-        "correctness.wildcard",
-        D::Correctness,
-        "Does a changed `match` in `code` use a wildcard `_` arm on an enum where a variant added later would be handled wrongly by that arm with no warning?",
-        "The wildcard arm would silently apply behaviour that is wrong for new variants.",
-        "The wildcard arm is correct for any future variant, or the match is not over an enum.",
-    )
-    .gate(&[&[r"\bmatch\b"], &[r"\b_\s*=>"]])
     .skip(NON_PROD)
-    .threshold(0.45),
+    .beyond("rustc catches overflow only in constant expressions, and `arithmetic_side_effects` flags every operator; which operands can be large is a question about the data.")
+    .overlaps(&["arithmetic_overflow", "clippy::arithmetic_side_effects"]),
+    // `let _ = mutex.lock()` is Clippy's (`let_underscore_lock`, deny by
+    // default). This asks about drop points the code relies on.
     Q::noul(
         "correctness.drop_order",
         D::Correctness,
-        "Does the changed code in `code` drop a value earlier or later than the code relies on, for example a guard bound to `let _ =` that is dropped immediately, or a temporary that lives to the end of a statement?",
+        "Does the changed code in `code` rely on a value being dropped at one point when it is really dropped earlier or later, for example a temporary that lives to the end of its statement, a guard released by an early `drop`, or fields dropped in declaration order?",
         "A value's drop point differs from what the surrounding code relies on.",
         "Every value lives exactly as long as the code relies on.",
     )
-    .gate(&[&[r"let\s+_\s*=", r"\bdrop\(", r"impl\s+Drop", r"_guard", r"mem::forget", r"\.lock\(\)"]])
-    .skip(NON_PROD),
+    .gate(&[&[r"\bdrop\(", r"impl\s+Drop", r"_guard", r"mem::forget", r"\.lock\(\)"]])
+    .skip(NON_PROD)
+    .beyond("Clippy catches a guard bound to `_`; whether later code depends on a value still being alive is a property of the program's logic.")
+    .overlaps(&["clippy::let_underscore_lock", "clippy::let_underscore_must_use", "clippy::significant_drop_in_scrutinee"]),
     // ---- ownership ---------------------------------------------------
+    // Clippy finds the clone whose value is never used again
+    // (`redundant_clone`) and the needless `to_owned`. A function that takes
+    // ownership and only reads is `needless_pass_by_value`, so that question
+    // is gone.
     Q::noul(
         "ownership.clone",
         D::Ownership,
-        "Do the changed lines in `code` copy data that could have been borrowed instead, where the copy is large or runs inside a loop?",
+        "Do the changed lines in `code` copy a large value, or copy a value on every pass of a loop, where the code only reads the copy and a borrow would do?",
         "An avoidable copy of a large value, or a copy repeated inside a loop.",
         "Every copy is needed, or it is cheap: an `Arc` or `Rc` clone, a small value, or data moved into a spawned task or thread.",
     )
     .gate(&[&[r"\.clone\(\)", r"\.to_owned\(\)", r"\.to_vec\(\)", r"\.to_string\(\)", r"String::from", r"\.cloned\(\)"]])
-    .skip(NON_PROD),
-    Q::noul(
-        "ownership.signature",
-        D::Ownership,
-        "Does a changed function signature in `code` take ownership of a `String`, `Vec`, `PathBuf`, or other owned value that the function only reads?",
-        "The function only reads the owned argument, so callers must allocate or give up their value for no reason.",
-        "The function stores, moves, or mutates the owned argument, or it takes a borrowed type already.",
-    )
-    .gate(&[&[r"fn\s+\w+[^{;]*:\s*(String|Vec<|PathBuf|Box<)"]])
-    .skip(NON_PROD),
+    .skip(NON_PROD)
+    .beyond("Clippy proves a clone redundant only when the original is never used again; whether a copy that is used is large or hot enough to matter is a judgement about the data.")
+    .overlaps(&["clippy::redundant_clone", "clippy::unnecessary_to_owned", "clippy::implicit_clone", "clippy::needless_pass_by_value"]),
     // ---- type design -------------------------------------------------
     // Asked wherever types are defined, in applications as well as libraries.
     Q::noul(
@@ -384,17 +416,25 @@ pub static CORE: &[QuestionSpec] = &[
         r"fn\s+\w+[^{;]*:\s*(bool|&str|String|u8|i32|u32)\b",
         r"==\s*-1\b",
     ]])
-    .skip(NON_PROD_OR_BUILD),
+    .skip(NON_PROD_OR_BUILD)
+    .beyond("Clippy can count `bool` fields and parameters; it cannot know that a string or an integer stands for a closed set of states.")
+    .overlaps(&["clippy::struct_excessive_bools", "clippy::fn_params_excessive_bools"]),
     // ---- error handling ------------------------------------------------
+    // rustc reports an unused `Result` and Clippy reports `let _ =` on one.
+    // What is left is a failure that is used, but turned into a success.
     Q::noul(
         "error_handling.swallowed",
         D::ErrorHandling,
-        "Do the changed lines in `code` discard an error so that a failure goes unnoticed, for example `let _ =` on a `Result`, `.ok()`, `unwrap_or_default()`, or an `Err(_)` branch that does nothing?",
+        "Do the changed lines in `code` turn a failure into a success or a default so that it goes unnoticed, for example `.ok()` whose `None` is ignored, `unwrap_or_default()` on a `Result`, an `Err(_)` arm that does nothing, or an `if let Ok` with no `else`?",
         "A failure is silently ignored and the program continues as if the operation succeeded.",
         "Every error is handled, returned, logged, or deliberately ignored where ignoring it is correct.",
     )
-    .gate(&[&[r"let\s+_\s*=", r"\.ok\(\)", r"unwrap_or_default", r"unwrap_or\(", r"Err\(_\)", r"if\s+let\s+Ok", r"\.is_ok\(\)"]])
-    .skip(TESTS),
+    .gate(&[&[r"\.ok\(\)", r"unwrap_or_default", r"unwrap_or\(", r"Err\(_\)", r"if\s+let\s+Ok", r"\.is_ok\(\)"]])
+    .skip(TESTS)
+    .beyond("rustc and Clippy see a `Result` that is dropped; they do not see one that is consumed by `.ok()` or a default, and whether the default is a correct answer is a judgement.")
+    .overlaps(&["unused_must_use", "clippy::let_underscore_must_use"]),
+    // Clippy can find every `unwrap` when a project asks it to. Where the
+    // value comes from is the part that needs judgement.
     Q::noul(
         "error_handling.panic",
         D::ErrorHandling,
@@ -403,16 +443,21 @@ pub static CORE: &[QuestionSpec] = &[
         "Every possible panic enforces an invariant that the surrounding code has already checked or documented.",
     )
     .gate(&[&[r"\.unwrap\(\)", r"\.expect\(", r"panic!", r"unreachable!", r"todo!", r"unimplemented!", INDEXING]])
-    .skip(NON_PROD),
+    .skip(NON_PROD)
+    .beyond("`unwrap_used` and its siblings flag every call site alike; whether the value comes from input the program does not control is not visible to a lint.")
+    .overlaps(&["clippy::unwrap_used", "clippy::expect_used", "clippy::indexing_slicing", "clippy::panic", "clippy::unreachable", "clippy::todo", "clippy::unimplemented"]),
+    // `.map_err(|_| ..)` is Clippy's (`map_err_ignore`).
     Q::noul(
         "error_handling.lossy",
         D::ErrorHandling,
-        "Does the changed code in `code` convert or replace an error in a way that drops the original error's message, source, or context?",
+        "Does the changed code in `code` replace an error with a new one built from a fixed variant, a fixed message, or only the old error's text, so that the original error's source or context is lost?",
         "The original error's information is discarded, so the caller cannot tell what actually failed.",
         "The original error is kept, wrapped, or chained, or it carries no useful information.",
     )
     .gate(&[&[r"map_err", r"\.ok_or", r"Box<dyn\s+(std::error::)?Error", r"anyhow!|bail!", r"impl\s+From<", r#"Err\(\s*(format!|String::|")"#]])
-    .skip(TESTS),
+    .skip(TESTS)
+    .beyond("Clippy sees only a closure that ignores its argument; an error that is read and then flattened to a string, or replaced in a `From` impl, passes every lint.")
+    .overlaps(&["clippy::map_err_ignore"]),
     Q::noul(
         "error_handling.drop_panic",
         D::ErrorHandling,
@@ -420,17 +465,13 @@ pub static CORE: &[QuestionSpec] = &[
         "The `drop` body contains an operation that can panic.",
         "The `drop` body cannot panic.",
     )
-    .gate(&[&[r"impl[^{]*\bDrop\s+for"]]),
+    .gate(&[&[r"impl[^{]*\bDrop\s+for"]])
+    .beyond("No rustc or Clippy lint treats a `drop` body differently from any other function, so a panic there is not reported.")
+    .overlaps(&["clippy::unwrap_used", "clippy::expect_used", "clippy::panic"]),
     // ---- async ---------------------------------------------------------
-    Q::noul(
-        "async.guard_across_await",
-        D::Async,
-        "In `code`, is a guard from `std::sync::Mutex`, `std::sync::RwLock`, `parking_lot`, or `RefCell` still alive at an `.await` point?",
-        "A synchronous lock or borrow guard is held while the function awaits.",
-        "Every such guard is dropped before any `.await`, or the lock is an async lock such as `tokio::sync::Mutex`.",
-    )
-    .gate(&[&[r"\.await"], &[LOCK_CALL, r"\.borrow(_mut)?\(\)", r"Mutex", r"RwLock"]])
-    .skip(TESTS),
+    // A std, parking_lot or RefCell guard held across `.await` is Clippy's
+    // (`await_holding_lock`, `await_holding_refcell_ref`, both on by
+    // default), so there is no question for it.
     Q::noul(
         "async.blocking_call",
         D::Async,
@@ -438,7 +479,9 @@ pub static CORE: &[QuestionSpec] = &[
         "Blocking work runs directly on the async executor thread.",
         "All blocking work is offloaded, or the operation is non-blocking or trivially short.",
     )
-    .gate(&[&[r"\basync\b"], &[r"thread::sleep", r"std::fs|\bfs::", r"File::", r"std::net", r"blocking", r"read_to_string", r"\.join\(\)", r"Command::new", r"stdin", r"sync_channel", r"\.recv\(\)"]]),
+    .gate(&[&[r"\basync\b"], &[r"thread::sleep", r"std::fs|\bfs::", r"File::", r"std::net", r"blocking", r"read_to_string", r"\.join\(\)", r"Command::new", r"stdin", r"sync_channel", r"\.recv\(\)"]])
+    .beyond("Blocking is not part of a function's type, so neither rustc nor Clippy knows which calls stall an executor thread.")
+    .overlaps(&["clippy::disallowed_methods"]),
     Q::noul(
         "async.select_cancellation",
         D::Async,
@@ -446,7 +489,8 @@ pub static CORE: &[QuestionSpec] = &[
         "Cancelling a losing branch loses data or leaves state half-updated.",
         "Every branch is cancellation safe, or losing progress in it is harmless.",
     )
-    .gate(&[&[r"select!"]]),
+    .gate(&[&[r"select!"]])
+    .beyond("Cancellation safety is documented in prose, not encoded in types, so no compiler check or lint can see a future that loses data when it is dropped."),
     Q::noul(
         "async.detached_task",
         D::Async,
@@ -455,7 +499,9 @@ pub static CORE: &[QuestionSpec] = &[
         "Every spawned task is awaited, tracked in a set, or deliberately detached with its errors handled inside the task.",
     )
     .gate(&[&[r"spawn\("]])
-    .skip(TESTS),
+    .skip(TESTS)
+    .beyond("`JoinHandle` is not `#[must_use]`, so dropping one is silent; whether a task may run unowned is a design decision no lint knows.")
+    .overlaps(&["clippy::let_underscore_future"]),
     Q::noul(
         "async.unbounded",
         D::Async,
@@ -464,7 +510,9 @@ pub static CORE: &[QuestionSpec] = &[
         "Work and buffering are bounded, or the input size is small and fixed.",
     )
     .gate(&[&[r"unbounded", r"spawn\(", r"join_all", r"FuturesUnordered", r"buffer_unordered", r"for_each_concurrent"]])
-    .skip(TESTS),
+    .skip(TESTS)
+    .beyond("Growth under load depends on how fast producers and consumers run, which no static check models.")
+    .overlaps(&["clippy::disallowed_methods"]),
     Q::noul(
         "async.sequential_awaits",
         D::Async,
@@ -474,7 +522,8 @@ pub static CORE: &[QuestionSpec] = &[
     )
     .gate(&[&[r"\.await"], &[r"\b(for|while|loop)\b"]])
     .skip(NON_PROD)
-    .threshold(0.55),
+    .threshold(0.55)
+    .beyond("Whether two awaits are independent depends on what the awaited operations do to shared state, which no lint analyses."),
     // ---- concurrency -----------------------------------------------------
     Q::noul(
         "concurrency.check_then_act",
@@ -486,7 +535,9 @@ pub static CORE: &[QuestionSpec] = &[
     .gate(&[
         &[LOCK_CALL, r"\.load\(", r"contains", r"\.get\(", r"exists", r"is_some", r"is_none"],
         &[r"Mutex", r"RwLock", r"Atomic", r"DashMap", r"Arc<", r"\bstatic\b", r"\bfs::", r"\bPath"],
-    ]),
+    ])
+    .beyond("Each step is memory safe and type correct, so the compiler accepts it; the race lives in the gap between two statements, which no lint models.")
+    .overlaps(&["clippy::map_entry"]),
     Q::noul(
         "concurrency.atomics",
         D::Concurrency,
@@ -494,15 +545,21 @@ pub static CORE: &[QuestionSpec] = &[
         "An atomic ordering is too weak for how the value is used, or a compound update is not atomic.",
         "Orderings match how the values are used and every compound update is a single atomic operation.",
     )
-    .gate(&[&[r"Atomic[A-Z]\w+", r"Ordering::(Relaxed|SeqCst|Acquire|Release|AcqRel)"]]),
+    .gate(&[&[r"Atomic[A-Z]\w+", r"Ordering::(Relaxed|SeqCst|Acquire|Release|AcqRel)"]])
+    .beyond("Every ordering is a valid argument, so the code builds clean; which ordering a use needs depends on what the value publishes."),
+    // Clippy checks the fields of an `unsafe impl Send`
+    // (`non_send_fields_in_send_ty`). It has no check for `Sync`, and it
+    // cannot tell whether a raw pointer's target is synchronised.
     Q::noul(
         "concurrency.unsafe_send_sync",
         D::Concurrency,
-        "Does a changed `unsafe impl Send` or `unsafe impl Sync` in `code` apply to a type that contains data that is not safe to send or share across threads, such as `Rc`, `Cell`, `RefCell`, or an unsynchronised raw pointer?",
-        "The type holds data that is unsafe to send or share across threads.",
-        "Every field is safe to send or share, or access is synchronised.",
+        "Does a changed `unsafe impl Sync`, or a changed `unsafe impl Send` for a type that holds a raw pointer, in `code` let two threads reach the same data with no synchronisation?",
+        "Two threads can reach the type's data at once and nothing synchronises them.",
+        "Every access to the shared data is synchronised, or the data is never mutated after construction.",
     )
-    .gate(&[&[r"unsafe\s+impl[^{]*\b(Send|Sync)\b"]]),
+    .gate(&[&[r"unsafe\s+impl[^{]*\b(Send|Sync)\b"]])
+    .beyond("Clippy checks field types of `unsafe impl Send` only; it has no `Sync` check, and whether access behind a raw pointer is synchronised is not in any type.")
+    .overlaps(&["clippy::non_send_fields_in_send_ty"]),
     Q::noul(
         "concurrency.lock_scope",
         D::Concurrency,
@@ -510,9 +567,14 @@ pub static CORE: &[QuestionSpec] = &[
         "A lock is held across slow work or another lock acquisition that does not need it.",
         "Critical sections are short and only cover the data they protect.",
     )
-    .gate(&[&[LOCK_CALL], &[r"Mutex", r"RwLock"]]),
+    .gate(&[&[LOCK_CALL], &[r"Mutex", r"RwLock"]])
+    .beyond("Clippy's `significant_drop_tightening` sees where a guard could be dropped sooner; it does not know which calls are slow or take another lock.")
+    .overlaps(&["clippy::significant_drop_tightening", "clippy::await_holding_lock"]),
     // ---- unsafe ------------------------------------------------------------
     // Three narrow questions instead of one that lists five kinds of UB.
+    // Undocumented `unsafe` is Clippy's (`undocumented_unsafe_blocks`,
+    // `missing_safety_doc`). Miri finds UB only on the executions a test
+    // reaches, and the report suggests it whenever `unsafe` changed.
     Q::noul(
         "unsafe.memory_access",
         D::Unsafe,
@@ -520,7 +582,8 @@ pub static CORE: &[QuestionSpec] = &[
         "A concrete input or call sequence makes an `unsafe` operation access invalid or uninitialised memory.",
         "Every `unsafe` memory access is valid for all inputs, for example because the code checks bounds or lengths first.",
     )
-    .gate(&[&[r"\bunsafe\b"]]),
+    .gate(&[&[r"\bunsafe\b"]])
+    .beyond("`unsafe` is exactly where the compiler stops checking; Miri finds a bad access only on an execution a test reaches, and no static tool finds the input."),
     Q::noul(
         "unsafe.aliasing",
         D::Unsafe,
@@ -528,7 +591,9 @@ pub static CORE: &[QuestionSpec] = &[
         "Two references that Rust forbids from coexisting can be alive at the same time.",
         "References created in the `unsafe` code never alias in a forbidden way.",
     )
-    .gate(&[&[r"\bunsafe\b"], &[r"&mut\b", r"\*mut\b", r"as_mut", r"from_raw", r"UnsafeCell", r"get_unchecked_mut"]]),
+    .gate(&[&[r"\bunsafe\b"], &[r"&mut\b", r"\*mut\b", r"as_mut", r"from_raw", r"UnsafeCell", r"get_unchecked_mut"]])
+    .beyond("The borrow checker does not follow raw pointers; rustc's `invalid_reference_casting` catches only a direct `&T` to `&mut T` cast.")
+    .overlaps(&["invalid_reference_casting", "clippy::mut_from_ref"]),
     Q::noul(
         "unsafe.transmute",
         D::Unsafe,
@@ -536,7 +601,9 @@ pub static CORE: &[QuestionSpec] = &[
         "The source and target types are not layout compatible, or the source can hold a value that is invalid for the target.",
         "The two types have the same size, alignment, and layout, and every source value is valid for the target.",
     )
-    .gate(&[&[r"transmute", r"\bas\s+\*(const|mut)\b", r"\.cast::<", r"from_raw_parts"]]),
+    .gate(&[&[r"transmute", r"\bas\s+\*(const|mut)\b", r"\.cast::<", r"from_raw_parts"]])
+    .beyond("rustc rejects a `transmute` between sizes that differ and Clippy knows a few fixed type pairs; validity of the values and layout of user types are not checked.")
+    .overlaps(&["clippy::transmute_undefined_repr", "clippy::cast_ptr_alignment", "clippy::wrong_transmute", "clippy::unsound_collection_transmute"]),
     // ---- ffi ----------------------------------------------------------------
     Q::noul(
         "ffi.ownership",
@@ -545,7 +612,8 @@ pub static CORE: &[QuestionSpec] = &[
         "Memory crossing the boundary is freed by the wrong side, freed twice, or never freed.",
         "Each allocation crossing the boundary is freed exactly once by the side that allocated it.",
     )
-    .gate(&[&[r"into_raw|from_raw", r"\bfree\(", r"Box::leak", r"mem::forget", r"CString"], &[r#"extern\s+"C""#, r"no_mangle", r"c_char", r"c_void", r"\*(mut|const)\s"]]),
+    .gate(&[&[r"into_raw|from_raw", r"\bfree\(", r"Box::leak", r"mem::forget", r"CString"], &[r#"extern\s+"C""#, r"no_mangle", r"c_char", r"c_void", r"\*(mut|const)\s"]])
+    .beyond("Ownership across an `extern` boundary is a convention between two languages, so no Rust tool can see which side frees a pointer."),
     Q::noul(
         "ffi.pointers_and_strings",
         D::Ffi,
@@ -553,28 +621,35 @@ pub static CORE: &[QuestionSpec] = &[
         "A foreign pointer is used before a null check, or a string crosses the boundary with the wrong termination or encoding.",
         "Foreign pointers are checked for null before use and strings are converted with `CStr` or `CString` correctly.",
     )
-    .gate(&[&[r"c_char", r"CStr", r"CString", r"\*(mut|const)\s", r"c_void"], &[r#"extern\s+"C""#, r"no_mangle", r"\bunsafe\b"]]),
+    .gate(&[&[r"c_char", r"CStr", r"CString", r"\*(mut|const)\s", r"c_void"], &[r#"extern\s+"C""#, r"no_mangle", r"\bunsafe\b"]])
+    .beyond("Clippy checks only that a function dereferencing a raw pointer argument is marked `unsafe`; a missing null check or NUL terminator passes every lint.")
+    .overlaps(&["clippy::not_unsafe_ptr_arg_deref"]),
     Q::noul(
         "ffi.unwind",
         D::Ffi,
-        "Can a panic unwind out of a changed `extern \"C\"` function in `code`, for example from `unwrap`, indexing, or an allocation, with nothing such as `catch_unwind` to stop it?",
-        "A panic can cross the `extern \"C\"` boundary.",
+        "Can a changed `extern \"C\"` function in `code` panic, for example from `unwrap`, indexing, or an allocation, with nothing such as `catch_unwind` to stop it, so that the panic aborts the whole process?",
+        "A panic can start inside the `extern \"C\"` function and nothing catches it.",
         "The function body cannot panic, or panics are caught before the boundary.",
     )
-    .gate(&[&[r#"extern\s+"C"\s+fn"#]]),
+    .gate(&[&[r#"extern\s+"C"\s+fn"#]])
+    .beyond("Since Rust 1.81 a panic in an `extern \"C\"` function aborts the process instead of unwinding, and no lint reports a panic path inside one.")
+    .overlaps(&["clippy::unwrap_used", "clippy::indexing_slicing"]),
     // ---- performance -----------------------------------------------------------
+    // A regex built inside a loop is Clippy's (`regex_creation_in_loops`).
     Q::noul(
         "performance.repeated_work",
         D::Performance,
-        "Does the changed code in `code` repeat avoidable work inside a loop, such as allocating, cloning, parsing, compiling a regex, or searching a list linearly, in a way that grows costly as the input grows?",
+        "Does the changed code in `code` repeat avoidable work inside a loop, such as allocating, cloning, parsing, or searching a list linearly, in a way that grows costly as the input grows?",
         "Work inside a loop could be hoisted or replaced with a lookup, and the cost grows with input size.",
         "The loop does only necessary work, or the input is small and bounded.",
     )
     .gate(&[
         &[LOOP],
-        &[r"\.clone\(\)|\.to_(string|owned|vec)\(\)", r"String::(from|new)|Vec::new|format!", r"Regex::new|\.parse\b|from_str", r"\.contains\(|\.find\(|\.position\(", r"\.collect"],
+        &[r"\.clone\(\)|\.to_(string|owned|vec)\(\)", r"String::(from|new)|Vec::new|format!", r"\.parse\b|from_str", r"\.contains\(|\.find\(|\.position\(", r"\.collect"],
     ])
-    .skip(NON_PROD_OR_BUILD),
+    .skip(NON_PROD_OR_BUILD)
+    .beyond("Clippy's perf lints match single expressions; a linear search inside a loop is quadratic only because of the loop around it, and how large the input gets is not in the code.")
+    .overlaps(&["clippy::regex_creation_in_loops", "clippy::needless_collect", "clippy::redundant_clone"]),
     // ---- idiom / maintainability ---------------------------------------------
     // The scale runs the same way as the question: a higher level means
     // harder to follow.
@@ -589,8 +664,12 @@ pub static CORE: &[QuestionSpec] = &[
         ],
         2,
     )
-    .skip(TESTS),
+    .skip(TESTS)
+    .beyond("Clippy's style lints rewrite known patterns and its complexity lints count branches; neither measures whether a reader can follow the intent.")
+    .overlaps(&["clippy::cognitive_complexity", "clippy::too_many_lines", "clippy::excessive_nesting"]),
     // ---- api -------------------------------------------------------------------
+    // cargo-semver-checks answers this as a fact. The diagnostics tool runs
+    // it when it is installed, and then this question's flags are dropped.
     Q::noul(
         "api.breaking_change",
         D::Api,
@@ -599,7 +678,9 @@ pub static CORE: &[QuestionSpec] = &[
         "Every public item that existed before still exists with a compatible signature; only new items are added or private code changed.",
     )
     .gate(&[&[r"\bpub\s+(fn|struct|enum|trait|type|const|static|mod|use|unsafe|async)\b", r"\bpub\s+\w+\s*:"]])
-    .skip(NON_LIB),
+    .skip(NON_LIB)
+    .beyond("cargo-semver-checks does answer this, and its answer replaces this question whenever it ran; the question is the fallback for machines where it is not installed.")
+    .overlaps(&[SEMVER_CHECKS]),
     // ---- macros ----------------------------------------------------------------
     Q::noul(
         "macros.double_evaluation",
@@ -608,7 +689,8 @@ pub static CORE: &[QuestionSpec] = &[
         "A macro argument appears more than once in the expansion.",
         "Each argument is bound to a local once and the local is reused.",
     )
-    .gate(&[&[r"macro_rules!"]]),
+    .gate(&[&[r"macro_rules!"]])
+    .beyond("rustc checks a macro's expansion, not its definition, and no Clippy lint looks for a fragment that is expanded twice."),
     Q::noul(
         "macros.name_collision",
         D::Macros,
@@ -616,7 +698,8 @@ pub static CORE: &[QuestionSpec] = &[
         "Generated names can clash with names the caller already uses.",
         "Generated names are hygienic, derived from the input, or unique.",
     )
-    .gate(&[&[r"macro_rules!", r"proc_macro", r"quote!"]]),
+    .gate(&[&[r"macro_rules!", r"proc_macro", r"quote!"]])
+    .beyond("A collision appears only in the crate that calls the macro with a clashing name, so nothing fails where the macro is defined."),
     // ---- serde -------------------------------------------------------------------
     Q::noul(
         "serde.compatibility",
@@ -625,7 +708,8 @@ pub static CORE: &[QuestionSpec] = &[
         "Data written by the old version cannot be read by the new one, or the reverse.",
         "The serialized format stays compatible with data written before the change.",
     )
-    .gate(&[&[r"Serialize", r"Deserialize", r"serde\("]]),
+    .gate(&[&[r"Serialize", r"Deserialize", r"serde\("]])
+    .beyond("The wire format is not part of the Rust API, so neither rustc nor cargo-semver-checks sees a rename that breaks stored data."),
     Q::noul(
         "serde.silent_default",
         D::Serde,
@@ -633,7 +717,8 @@ pub static CORE: &[QuestionSpec] = &[
         "Invalid or incomplete input is now accepted and filled with a default.",
         "Defaults apply only where a missing value is valid.",
     )
-    .gate(&[&[r"serde\([^)]*(default|other|skip)"]]),
+    .gate(&[&[r"serde\([^)]*(default|other|skip)"]])
+    .beyond("Every serde attribute is valid wherever it is allowed; whether a missing value is acceptable is a rule of the data, which no tool knows."),
     // ---- security ----------------------------------------------------------------
     Q::noul(
         "security.injection",
@@ -648,7 +733,8 @@ pub static CORE: &[QuestionSpec] = &[
         r"Path(Buf)?::|\.join\(|File::(open|create)|\bfs::",
         r#"Url::parse|format!\(\s*"https?:"#,
     ]])
-    .skip(TESTS),
+    .skip(TESTS)
+    .beyond("Rust has no taint tracking: a `String` from a request and one from a constant have the same type, so no lint tells them apart."),
     Q::noul(
         "security.secret_exposure",
         D::Security,
@@ -660,7 +746,8 @@ pub static CORE: &[QuestionSpec] = &[
         &[r"log::", r"tracing", r"info!", r"debug!", r"warn!", r"error!", r"trace!", r"println!", r"eprintln!", r"format!", r"Debug"],
         &[r"(?i)password|passwd|secret|token|api_?key|credential|cookie|session|bearer"],
     ])
-    .skip(TESTS),
+    .skip(TESTS)
+    .beyond("Which values are secret is knowledge about the application; to the compiler a token is one more `String` passed to a format macro."),
     Q::noul(
         "security.tls_verification",
         D::Security,
@@ -669,7 +756,9 @@ pub static CORE: &[QuestionSpec] = &[
         "TLS verification stays on.",
     )
     .gate(&[&[r"danger", r"accept_invalid", r"(?i)verify_?none", r"(?i)no_?verif", r"set_verify"]])
-    .skip(TESTS),
+    .skip(TESTS)
+    .beyond("Turning verification off is a supported API call; only a project that lists it under `disallowed_methods` hears about it.")
+    .overlaps(&["clippy::disallowed_methods"]),
     Q::noul(
         "security.weak_randomness",
         D::Security,
@@ -678,7 +767,8 @@ pub static CORE: &[QuestionSpec] = &[
         "Security-sensitive values come from a cryptographic source, or the random values are not security sensitive.",
     )
     .gate(&[&[r"thread_rng|\brand::|random\(|SmallRng|fastrand|StdRng::seed"]])
-    .skip(TESTS),
+    .skip(TESTS)
+    .beyond("A fast generator is correct for a simulation and wrong for a token; what the number is used for is not visible to a lint."),
     Q::noul(
         "security.unbounded_input",
         D::Security,
@@ -687,7 +777,8 @@ pub static CORE: &[QuestionSpec] = &[
         "Input size is bounded, or the input is trusted.",
     )
     .gate(&[&[r"from_slice", r"from_reader", r"read_to_end", r"read_to_string", r"bincode", r"\.bytes\(\)\.await", r"to_bytes\("]])
-    .skip(TESTS),
+    .skip(TESTS)
+    .beyond("Whether a reader is trusted, and how large its input may get, is not in any type, so no tool flags an unbounded read."),
     // ---- testing -----------------------------------------------------------------
     // Whether the diff touches tests at all is a fact about the diff and is
     // computed in code. This asks the one local thing Jev can judge.
@@ -698,8 +789,12 @@ pub static CORE: &[QuestionSpec] = &[
         "A changed test would still pass if the code under test returned a wrong result.",
         "Every changed test asserts on the behaviour it exercises, or expects a panic or an error explicitly.",
     )
-    .gate(&[&[r"#\[(\w+::)*test\b", r"#\[rstest", r"proptest!"]]),
+    .gate(&[&[r"#\[(\w+::)*test\b", r"#\[rstest", r"proptest!"]])
+    .beyond("Clippy catches an assertion on a constant; a test that asserts nothing about the value it computed passes every lint and every run.")
+    .overlaps(&["clippy::assertions_on_constants"]),
     // ---- cargo (manifest units) ------------------------------------------------------
+    // Unpinned git, path and `*` sources are computed in code
+    // (`cargo_facts`), so there is no question for them.
     Q::noul(
         "cargo.manifest_risk",
         D::Cargo,
@@ -707,16 +802,8 @@ pub static CORE: &[QuestionSpec] = &[
         "The manifest change can break downstream builds or change behaviour.",
         "The manifest change is additive or internal and cannot affect existing users.",
     )
-    .manifest(),
-    Q::noul(
-        "cargo.unpinned_source",
-        D::Cargo,
-        "Does this change to `Cargo.toml` in `code` add a dependency from a git repository without a fixed `rev` or `tag`, from a local `path` outside the workspace, or with a `*` version?",
-        "A dependency can change underneath the project without the manifest changing.",
-        "Every added dependency resolves to a fixed, published version or a pinned revision.",
-    )
-    .gate(&[&[r"\bgit\s*=", r"\bpath\s*=", r#"=\s*"\*""#, r#"version\s*=\s*"\*""#]])
-    .manifest(),
+    .manifest()
+    .beyond("`cargo_facts` lists what changed in the manifest and cargo resolves it; whether users downstream depend on what was removed is outside the repository."),
 ];
 
 pub static PROFILES: &[Profile] = &[
@@ -733,7 +820,8 @@ pub static PROFILES: &[Profile] = &[
                 "A runtime is created or blocked on from inside async code, or `block_in_place` can run on a current-thread runtime.",
                 "Runtimes are only created or blocked on from synchronous entry points.",
             )
-            .gate(&[&[r"block_on", r"block_in_place", r"Runtime::new", r"Builder::new_"]]),
+            .gate(&[&[r"block_on", r"block_in_place", r"Runtime::new", r"Builder::new_"]])
+            .beyond("Whether a function already runs inside a runtime is decided by its callers at run time, so the nested `block_on` builds clean and panics later."),
             Q::noul(
                 "tokio.spawn_blocking_misuse",
                 D::Async,
@@ -741,7 +829,8 @@ pub static PROFILES: &[Profile] = &[
                 "`spawn_blocking` is used for endless work or is expected to be cancellable.",
                 "`spawn_blocking` is used for finite blocking work only.",
             )
-            .gate(&[&[r"spawn_blocking"]]),
+            .gate(&[&[r"spawn_blocking"]])
+            .beyond("`spawn_blocking` accepts any closure; that a started blocking task cannot be aborted is stated in Tokio's documentation, not in its types."),
             Q::noul(
                 "tokio.no_shutdown",
                 D::Async,
@@ -750,7 +839,9 @@ pub static PROFILES: &[Profile] = &[
                 "Every long-running task can be stopped, or the task ends on its own.",
             )
             .gate(&[&[r"spawn\("], &[r"\b(loop|while)\b", r"interval"]])
-            .skip(TESTS),
+            .skip(TESTS)
+            .beyond("A loop with no exit is valid Rust, and Clippy's `infinite_loop` does not look for a missing shutdown signal in a spawned task.")
+            .overlaps(&["clippy::infinite_loop"]),
             Q::noul(
                 "tokio.select_not_cancel_safe",
                 D::Async,
@@ -758,7 +849,8 @@ pub static PROFILES: &[Profile] = &[
                 "A non-cancellation-safe future is raced in a loop, so progress can be lost.",
                 "Every raced future is cancellation safe, or it is pinned outside the loop and reused.",
             )
-            .gate(&[&[r"select!"]]),
+            .gate(&[&[r"select!"]])
+            .beyond("Which Tokio futures are cancellation safe is listed in the documentation of each method; nothing in their types says so."),
             Q::noul(
                 "tokio.blocking_in_async",
                 D::Async,
@@ -766,7 +858,8 @@ pub static PROFILES: &[Profile] = &[
                 "A `blocking_*` method is called from async code.",
                 "`blocking_*` methods are only called from synchronous code.",
             )
-            .gate(&[&[r"blocking_send", r"blocking_recv", r"blocking_lock", r"blocking_read", r"blocking_write"]]),
+            .gate(&[&[r"blocking_send", r"blocking_recv", r"blocking_lock", r"blocking_read", r"blocking_write"]])
+            .beyond("The `blocking_*` methods have ordinary signatures and panic only when called on a runtime thread, so no build or lint step sees the misuse."),
             Q::noul(
                 "tokio.async_mutex_unneeded",
                 D::Performance,
@@ -775,7 +868,8 @@ pub static PROFILES: &[Profile] = &[
                 "The async mutex is held across `.await`, or a std mutex is already used.",
             )
             .gate(&[&[r"tokio::sync::(Mutex|RwLock)", r"\b(Mutex|RwLock)<"]])
-            .threshold(0.6),
+            .threshold(0.6)
+            .beyond("Both mutexes are correct here, so nothing warns; which one fits depends on whether any guard ever lives across an `.await`."),
         ],
     },
     Profile {
@@ -791,7 +885,8 @@ pub static PROFILES: &[Profile] = &[
                 "Internal error details reach the HTTP response, or a failure is reported with a success status.",
                 "Errors map to appropriate status codes with messages safe for clients.",
             )
-            .gate(&[&[r"IntoResponse", r"StatusCode", r"Json\("]]),
+            .gate(&[&[r"IntoResponse", r"StatusCode", r"Json\("]])
+            .beyond("Any string is a valid response body; that it carries a database error meant for the log is not visible to a tool."),
             Q::noul(
                 "axum.layer_order",
                 D::Correctness,
@@ -799,7 +894,8 @@ pub static PROFILES: &[Profile] = &[
                 "Middleware runs in an order that defeats its purpose.",
                 "Middleware runs in an order consistent with its purpose.",
             )
-            .gate(&[&[r"\.layer\(", r"route_layer", r"ServiceBuilder"]]),
+            .gate(&[&[r"\.layer\(", r"route_layer", r"ServiceBuilder"]])
+            .beyond("Every ordering of layers type checks; which order defeats authentication or a timeout depends on what each layer does."),
             Q::noul(
                 "axum.extension_state",
                 D::Correctness,
@@ -807,7 +903,8 @@ pub static PROFILES: &[Profile] = &[
                 "`Extension` carries state that some routes may not have.",
                 "State is passed with `State`, or the `Extension` is always present.",
             )
-            .gate(&[&[r"Extension"]]),
+            .gate(&[&[r"Extension"]])
+            .beyond("A missing `Extension` is found when a request arrives, not when the router is built, and no lint checks routes against layers."),
             Q::noul(
                 "axum.blocking_handler",
                 D::Async,
@@ -815,7 +912,9 @@ pub static PROFILES: &[Profile] = &[
                 "The handler blocks the executor thread.",
                 "Blocking work is offloaded or absent.",
             )
-            .gate(&[&[r"async\s+fn"], &[r"std::fs|\bfs::", r"hash", r"bcrypt", r"argon2", r"diesel", r"rusqlite", r"thread::sleep", r"blocking"]]),
+            .gate(&[&[r"async\s+fn"], &[r"std::fs|\bfs::", r"hash", r"bcrypt", r"argon2", r"diesel", r"rusqlite", r"thread::sleep", r"blocking"]])
+            .beyond("Blocking is not part of a function's type, so a handler that hashes a password on the executor thread builds and lints clean.")
+            .overlaps(&["clippy::disallowed_methods"]),
         ],
     },
     Profile {
@@ -831,7 +930,9 @@ pub static PROFILES: &[Profile] = &[
                 "A signal read or write guard is held while the code awaits.",
                 "Signal guards are dropped before every `.await`.",
             )
-            .gate(&[&[r"\.await"], &[r"\.read\(\)", r"\.write\(\)", r"with_mut"]]),
+            .gate(&[&[r"\.await"], &[r"\.read\(\)", r"\.write\(\)", r"with_mut"]])
+            .beyond("Clippy's `await_holding_*` lints know std, parking_lot and `RefCell` guards; a Dioxus signal guard is on its list only if the project adds it to `await-holding-invalid-types`.")
+            .overlaps(&["clippy::await_holding_invalid_type", "clippy::await_holding_refcell_ref"]),
             Q::noul(
                 "dioxus.read_write_overlap",
                 D::Correctness,
@@ -839,7 +940,8 @@ pub static PROFILES: &[Profile] = &[
                 "A read guard and a write to the same signal overlap.",
                 "Every read guard is released before the same signal is written.",
             )
-            .gate(&[&[r"\.read\(\)", r"\.with\(", r"\.iter\(\)"], &[r"\.write\(\)", r"\.set\(", r"with_mut", r"\w\s*\+=", r"\.push\("]]),
+            .gate(&[&[r"\.read\(\)", r"\.with\(", r"\.iter\(\)"], &[r"\.write\(\)", r"\.set\(", r"with_mut", r"\w\s*\+=", r"\.push\("]])
+            .beyond("Signals borrow at run time like `RefCell`, so the borrow checker accepts an overlap that panics when the component renders."),
             Q::noul(
                 "dioxus.effect_loop",
                 D::Correctness,
@@ -847,7 +949,8 @@ pub static PROFILES: &[Profile] = &[
                 "The effect or memo writes a signal it subscribes to.",
                 "The effect or memo only writes signals it reads through `peek()` or does not read.",
             )
-            .gate(&[&[r"use_effect", r"use_memo"]]),
+            .gate(&[&[r"use_effect", r"use_memo"]])
+            .beyond("Subscriptions are created at run time by reading a signal, so no static tool sees an effect that re-triggers itself."),
             Q::noul(
                 "dioxus.hook_rules",
                 D::Correctness,
@@ -855,7 +958,9 @@ pub static PROFILES: &[Profile] = &[
                 "A hook call can be skipped or reordered between renders.",
                 "Hooks are called unconditionally at the top level of the component, in the same order every render.",
             )
-            .gate(&[&[r"\buse_[a-z_]+\("]]),
+            .gate(&[&[r"\buse_[a-z_]+\("]])
+            .beyond("rustc and Clippy know nothing about hook order; `dx check` does, and it is not part of a cargo build, so most changes never pass through it.")
+            .overlaps(&[DX_CHECK]),
             Q::noul(
                 "dioxus.stale_capture",
                 D::Correctness,
@@ -863,7 +968,8 @@ pub static PROFILES: &[Profile] = &[
                 "The closure captures a changing non-signal value that is not tracked, for example without `use_reactive`.",
                 "The closure only uses signals or values that stay the same for the component's lifetime.",
             )
-            .gate(&[&[r"use_effect", r"use_memo", r"use_resource", r"use_future"]]),
+            .gate(&[&[r"use_effect", r"use_memo", r"use_resource", r"use_future"]])
+            .beyond("Capturing a plain value in a closure is ordinary Rust; that the hook will not re-run when the value changes is Dioxus behaviour no lint models."),
             Q::noul(
                 "dioxus.server_fn_trust",
                 D::Security,
@@ -871,7 +977,8 @@ pub static PROFILES: &[Profile] = &[
                 "The server function acts on unvalidated input or without an authorisation check.",
                 "The server function validates input and checks authorisation, or it only returns public data.",
             )
-            .gate(&[&[r"#\[server", r"#\[get", r"#\[post", r"#\[put", r"#\[delete", r"#\[patch"]]),
+            .gate(&[&[r"#\[server", r"#\[get", r"#\[post", r"#\[put", r"#\[delete", r"#\[patch"]])
+            .beyond("A server function looks like a local call, and no tool knows that its arguments arrive from an untrusted client."),
             Q::noul(
                 "dioxus.untracked_dependency",
                 D::Correctness,
@@ -879,7 +986,8 @@ pub static PROFILES: &[Profile] = &[
                 "A signal is read only inside the async block of `use_server_future`.",
                 "Signals are read in the closure before the async block, or none are read.",
             )
-            .gate(&[&[r"use_server_future"]]),
+            .gate(&[&[r"use_server_future"]])
+            .beyond("Where a signal is read decides whether it is tracked, and that rule lives in Dioxus's runtime, not in any type or lint."),
         ],
     },
 ];
@@ -1022,6 +1130,45 @@ pub fn all_specs() -> impl Iterator<Item = (&'static QuestionSpec, Option<&'stat
     )
 }
 
+/// The spec with this id, core or profile.
+pub fn spec(id: &str) -> Option<&'static QuestionSpec> {
+    all_specs().map(|(q, _)| q).find(|q| q.id == id)
+}
+
+/// Defects a lint states in full, so no question is asked about them at all.
+/// A finding in the dimension on the lint's lines repeats the lint.
+pub const TOOL_OWNED: &[(Dimension, &str)] = &[
+    (D::Async, "clippy::await_holding_lock"),
+    (D::Async, "clippy::await_holding_refcell_ref"),
+    (D::Async, "clippy::await_holding_invalid_type"),
+    (D::Ownership, "clippy::needless_pass_by_value"),
+    (D::Correctness, "clippy::wildcard_enum_match_arm"),
+];
+
+/// Every lint and tool that reports a defect of this dimension: the ones its
+/// questions overlap and the ones tools own outright. A finding names a
+/// dimension, not a question, so verification deduplicates by this.
+pub fn tool_overlap_for(d: Dimension) -> std::collections::BTreeSet<&'static str> {
+    let owned = TOOL_OWNED
+        .iter()
+        .filter(|(od, _)| *od == d)
+        .map(|(_, l)| *l);
+    all_specs()
+        .filter(|(q, _)| q.dimension == d)
+        .flat_map(|(q, _)| q.tool_overlap.iter().copied())
+        .chain(owned)
+        .collect()
+}
+
+/// The dimensions a lint speaks for.
+pub fn lint_dimensions(lint: &str) -> Vec<Dimension> {
+    Dimension::ALL
+        .iter()
+        .copied()
+        .filter(|d| tool_overlap_for(*d).contains(lint))
+        .collect()
+}
+
 pub fn reference_for(d: Dimension) -> String {
     format!("references/dimensions/{}.md", d.name())
 }
@@ -1117,17 +1264,20 @@ mod tests {
             ),
             ("correctness.overflow", "+    count += step as u32;"),
             (
-                "correctness.wildcard",
-                "+    match kind {\n+        _ => Mode::Fast,",
-            ),
-            (
                 "error_handling.panic",
                 "+    let port = args[1].parse::<u16>().unwrap();",
             ),
-            ("error_handling.lossy", "+    .map_err(|_| AppError::Io)?;"),
             (
-                "async.guard_across_await",
-                "+    let g = state.lock().unwrap();\n+    fetch().await;",
+                "error_handling.lossy",
+                "+    .map_err(|e| AppError::Io(e.to_string()))?;",
+            ),
+            (
+                "error_handling.swallowed",
+                "+    let cfg = load(path).unwrap_or_default();",
+            ),
+            (
+                "async.select_cancellation",
+                "+    tokio::select! {\n+        r = stream.read_exact(&mut buf) => {}",
             ),
             (
                 "unsafe.transmute",
@@ -1136,7 +1286,7 @@ mod tests {
             ("ffi.unwind", "+pub extern \"C\" fn run(p: *const u8) {"),
             (
                 "performance.repeated_work",
-                "+    for l in lines {\n+        let re = Regex::new(p)?;",
+                "+    for l in lines {\n+        if seen.contains(&l) {",
             ),
             (
                 "security.tls_verification",
@@ -1150,14 +1300,68 @@ mod tests {
                 "testing.weak_assertion",
                 "+#[tokio::test]\n+async fn works() {",
             ),
-            (
-                "cargo.unpinned_source",
-                "+foo = { git = \"https://example.com/foo\" }",
-            ),
         ];
         for (id, text) in cases {
             assert!(open_ids(text).contains(id), "{id} should open on {text:?}");
         }
+    }
+
+    /// Questions a tool now answers must not come back.
+    #[test]
+    fn tool_owned_defects_have_no_question() {
+        for id in [
+            "async.guard_across_await",
+            "ownership.signature",
+            "correctness.wildcard",
+            "cargo.unpinned_source",
+        ] {
+            assert!(spec(id).is_none(), "{id} is answered by a tool");
+        }
+        // Patterns a lint reports must not be what opens a narrowed gate.
+        let tool_owned = "+    let _ = std::fs::remove_file(p);\n+    let g = m.lock();\n";
+        assert!(!open_ids(tool_owned).contains("error_handling.swallowed"));
+    }
+
+    #[test]
+    fn every_question_goes_beyond_tooling() {
+        for (q, _) in all_specs() {
+            let why = q.beyond_tooling;
+            assert!(
+                why.len() >= 40 && why.ends_with('.'),
+                "{}: `beyond_tooling` must say in one sentence why no tool answers it",
+                q.id
+            );
+            assert_eq!(
+                why.matches(". ").count(),
+                0,
+                "{}: `beyond_tooling` is one sentence",
+                q.id
+            );
+            for lint in q.tool_overlap {
+                let named = lint.strip_prefix("clippy::").unwrap_or(lint);
+                assert!(
+                    !named.is_empty() && !named.contains(' ') || *lint == DX_CHECK,
+                    "{}: {lint:?} is not a lint or tool name",
+                    q.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_dimension_collects_its_questions_overlaps() {
+        let lints = tool_overlap_for(Dimension::Correctness);
+        assert!(lints.contains("clippy::cast_possible_truncation"));
+        assert!(lints.contains("arithmetic_overflow"));
+        assert!(!lints.contains("clippy::map_err_ignore"));
+        assert!(tool_overlap_for(Dimension::Api).contains(SEMVER_CHECKS));
+        // A guard across `.await` has no question, and is still an async
+        // defect that a finding must not repeat.
+        assert!(tool_overlap_for(Dimension::Async).contains("clippy::await_holding_lock"));
+        assert_eq!(
+            lint_dimensions("clippy::needless_pass_by_value"),
+            [Dimension::Ownership]
+        );
     }
 
     #[test]

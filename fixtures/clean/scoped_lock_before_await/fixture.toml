@@ -1,6 +1,5 @@
 description = "std Mutex guard confined to a block that ends before the await"
 file = "src/counter.rs"
-deps = ['tokio = { version = "1", features = ["full"] }']
 
 [claim]
 dimension = "async"

@@ -115,7 +115,7 @@ send({"jsonrpc": "2.0", "method": "notifications/initialized"})
 
 send({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
 tools = {t["name"] for t in wait_for(2)["result"]["tools"]}
-if tools != {"evaluate_rust_changes", "verify_rust_findings"}:
+if tools != {"cargo_diagnostics", "evaluate_rust_changes", "verify_rust_findings"}:
     fail("unexpected tools: %r" % tools)
 
 send({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
@@ -135,7 +135,8 @@ checks = [
     (any(s["file"] == ".env" for s in out["skipped"]), ".env skipped"),
     (len(out["payloads"]) == len(out["units"]), "one payload per unit"),
     ("fetch().await" in out["payloads"][0]["body"]["state"]["code"], "payload contains the code"),
-    ("async.guard_across_await" in out["payloads"][0]["body"]["questions"], "guard question gated in"),
+    ("concurrency.lock_scope" in out["payloads"][0]["body"]["questions"], "lock question gated in"),
+    ("async.guard_across_await" not in out["payloads"][0]["body"]["questions"], "a guard across .await is Clippy's, so Jev is not asked"),
     ("tokio.runtime_nesting" not in out["payloads"][0]["body"]["questions"], "irrelevant tokio question gated out"),
     (out["usage"]["requests"] == 0, "nothing sent"),
 ]

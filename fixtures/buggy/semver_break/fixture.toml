@@ -1,6 +1,7 @@
 description = "public function signature changed and a public field removed"
 file = "src/lib.rs"
 expected_dimensions = ["api"]
+tool_catches = true
 
 [claim]
 dimension = "api"

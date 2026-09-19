@@ -1,7 +1,6 @@
 description = "blocking file I/O and thread::sleep inside an async function"
 file = "src/handler.rs"
 expected_dimensions = ["async"]
-deps = ['tokio = { version = "1", features = ["full"] }']
 
 [claim]
 dimension = "async"

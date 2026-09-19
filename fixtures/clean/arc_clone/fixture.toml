@@ -1,6 +1,5 @@
 description = "Arc::clone moved into spawned tasks"
 file = "src/workers.rs"
-deps = ['tokio = { version = "1", features = ["full"] }']
 
 [claim]
 dimension = "ownership"

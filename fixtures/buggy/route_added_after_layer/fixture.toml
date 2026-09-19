@@ -1,0 +1,12 @@
+description = "an admin route is added after route_layer, so the auth middleware does not cover it"
+file = "src/app.rs"
+expected_dimensions = ["security", "correctness"]
+tool_catches = false
+source = "axum docs, Router::route_layer: the middleware is only applied to existing routes, so routes must be added before it: https://docs.rs/axum/latest/axum/struct.Router.html#method.route_layer"
+
+[claim]
+dimension = "security"
+start = '.route("/admin/keys", get(list_keys))'
+end = '.route("/admin/keys", get(list_keys))'
+text = "app adds the /admin/keys route after route_layer(from_fn(require_admin)); route_layer only wraps routes that already exist, so list_keys is served with no admin check."
+severity = "critical"

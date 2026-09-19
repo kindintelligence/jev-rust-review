@@ -36,6 +36,14 @@ pub struct Config {
     pub max_backoff: Duration,
     pub profiles: Profiles,
     pub run_cargo: bool,
+    /// Run cargo-semver-checks when it is installed and a library's `pub`
+    /// surface changed.
+    pub run_semver_checks: bool,
+    /// `CARGO_TARGET_DIR` for the server's own cargo runs. Unset means the
+    /// project's target directory, which shares its build cache and its lock.
+    pub cargo_target_dir: Option<String>,
+    /// Upper bound on one cargo run (Clippy, or cargo-semver-checks).
+    pub cargo_timeout: Duration,
     pub dry_run: bool,
 }
 
@@ -123,6 +131,11 @@ impl Config {
             max_backoff: Duration::from_secs(30),
             profiles,
             run_cargo: flag("JEV_RUST_REVIEW_CARGO", true),
+            cargo_target_dir: present("JEV_RUST_REVIEW_CARGO_TARGET_DIR"),
+            run_semver_checks: flag("JEV_RUST_REVIEW_SEMVER_CHECKS", true),
+            cargo_timeout: Duration::from_secs(
+                num("JEV_RUST_REVIEW_CARGO_TIMEOUT_SECS", 600) as u64
+            ),
             dry_run: flag("JEV_RUST_REVIEW_DRY_RUN", false),
         }
     }

@@ -1,6 +1,5 @@
 description = "expect on a compile-time-constant regex, with an explanation"
 file = "src/ident.rs"
-deps = ['regex = "1"']
 
 [claim]
 dimension = "error_handling"

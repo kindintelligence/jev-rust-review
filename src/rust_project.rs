@@ -16,7 +16,7 @@ const RUNTIMES: &[(&str, &str)] = &[
     ("compio", "compio"),
 ];
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub struct CrateInfo {
     pub name: String,
     /// Repo-relative directory containing Cargo.toml ("." for the root).
@@ -177,17 +177,10 @@ impl ProjectInfo {
         } else {
             None
         };
-        (
-            vec![
-                format!("cargo check{ws} --all-targets --message-format short"),
-                // Undocumented `unsafe` is Clippy's job, not a Jev question.
-                format!(
-                    "cargo clippy{ws} --all-targets --message-format short -- -W clippy::undocumented_unsafe_blocks -W clippy::missing_safety_doc"
-                ),
-                format!("cargo test{ws} --no-fail-fast"),
-            ],
-            note,
-        )
+        // Check and Clippy run inside the `cargo_diagnostics` tool, which
+        // filters their output to the change. Tests are left to the caller:
+        // a failing test has no line to filter by.
+        (vec![format!("cargo test{ws} --no-fail-fast")], note)
     }
 }
 

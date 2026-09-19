@@ -1,7 +1,7 @@
 description = "std::sync::MutexGuard held across .await in an async method"
 file = "src/cache.rs"
 expected_dimensions = ["async"]
-deps = ['tokio = { version = "1", features = ["full"] }']
+tool_catches = true
 
 [claim]
 dimension = "async"

@@ -1,0 +1,11 @@
+description = "a 25-function tidy-up of an async service; one rewrite splits a critical section in two"
+file = "src/sessions.rs"
+expected_dimensions = ["concurrency"]
+tool_catches = false
+
+[claim]
+dimension = "concurrency"
+start = "if self.open_count() >= self.limit {"
+end = "open.insert(id, user.to_string());"
+text = "open_session now checks the limit through open_count, which takes and releases the lock, and inserts under a second lock; two tasks can both pass the check while one slot is left, so more than limit sessions are opened."
+severity = "high"

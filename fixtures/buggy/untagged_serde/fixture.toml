@@ -1,7 +1,6 @@
 description = "untagged enum whose variants overlap, so refunds deserialize as payments"
 file = "src/event.rs"
 expected_dimensions = ["serde"]
-deps = ['serde = { version = "1", features = ["derive"] }']
 
 [claim]
 dimension = "serde"

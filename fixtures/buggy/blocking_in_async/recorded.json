@@ -38,11 +38,7 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.52
-        },
-        "ownership.signature": {
-          "type": "noul",
-          "noul": 0.2
+          "noul": 0.48
         },
         "type_design.loose_types": {
           "type": "noul",
@@ -54,22 +50,22 @@
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.39,
+          "score": 0.35,
           "probabilities": {
-            "0": 0.61,
-            "1": 0.39,
+            "0": 0.66,
+            "1": 0.34,
             "2": 0.0
           },
-          "confidence": 0.41,
+          "confidence": 0.48,
           "legend": {}
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.15
+          "noul": 0.16
         },
         "security.injection": {
           "type": "noul",
-          "noul": 0.64
+          "noul": 0.63
         },
         "security.unbounded_input": {
           "type": "noul",
@@ -88,31 +84,31 @@
           "choice": "supported",
           "probabilities": {
             "insufficient_context": 0.0,
-            "refuted": 0.01,
-            "supported": 0.99
+            "refuted": 0.0,
+            "supported": 1.0
           },
           "confidence": 0.99
         },
         "severity": {
           "type": "score",
-          "score": 1.41,
+          "score": 1.44,
           "probabilities": {
             "0": 0.01,
-            "1": 0.67,
-            "2": 0.22,
+            "1": 0.65,
+            "2": 0.24,
             "3": 0.1
           },
-          "confidence": 0.57
+          "confidence": 0.54
         },
         "category": {
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
-            "debatable_tradeoff": 0.17,
-            "real_defect": 0.83,
+            "debatable_tradeoff": 0.13,
+            "real_defect": 0.87,
             "style_preference": 0.0
           },
-          "confidence": 0.73
+          "confidence": 0.8
         }
       },
       "usage": {

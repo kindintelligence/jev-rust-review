@@ -7,25 +7,25 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.34
+          "noul": 0.36
         },
         "async.select_cancellation": {
           "type": "noul",
-          "noul": 0.91
+          "noul": 0.92
         },
         "async.sequential_awaits": {
           "type": "noul",
-          "noul": 0.25
+          "noul": 0.27
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.29,
+          "score": 0.26,
           "probabilities": {
-            "0": 0.71,
-            "1": 0.28,
+            "0": 0.74,
+            "1": 0.25,
             "2": 0.01
           },
-          "confidence": 0.56,
+          "confidence": 0.61,
           "legend": {}
         },
         "api.breaking_change": {
@@ -46,17 +46,17 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.18
+          "noul": 0.14
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.15,
+          "score": 0.16,
           "probabilities": {
             "0": 0.89,
-            "1": 0.07,
-            "2": 0.04
+            "1": 0.06,
+            "2": 0.05
           },
-          "confidence": 0.77,
+          "confidence": 0.75,
           "legend": {}
         }
       },
@@ -75,18 +75,18 @@
             "refuted": 0.13,
             "supported": 0.86
           },
-          "confidence": 0.8
+          "confidence": 0.79
         },
         "severity": {
           "type": "score",
-          "score": 2.83,
+          "score": 2.77,
           "probabilities": {
-            "0": 0.0,
-            "1": 0.03,
-            "2": 0.09,
-            "3": 0.88
+            "0": 0.01,
+            "1": 0.04,
+            "2": 0.13,
+            "3": 0.82
           },
-          "confidence": 0.83
+          "confidence": 0.77
         },
         "category": {
           "type": "choice",

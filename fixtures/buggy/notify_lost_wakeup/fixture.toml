@@ -1,0 +1,12 @@
+description = "a flag is checked before the Notified future is registered, so a notify_waiters in between is lost"
+file = "src/wait.rs"
+expected_dimensions = ["async", "concurrency"]
+tool_catches = false
+source = "tokio docs, sync::Notify::notify_waiters (no permit is stored) and Notified::enable: https://docs.rs/tokio/latest/tokio/sync/struct.Notify.html"
+
+[claim]
+dimension = "concurrency"
+start = "if self.is_requested()"
+end = "self.wake.notified().await;"
+text = "In wait, is_requested is checked before the Notified future exists; trigger in signal.rs uses notify_waiters, which stores no permit, so a trigger between the check and notified().await is lost and wait never returns."
+severity = "high"

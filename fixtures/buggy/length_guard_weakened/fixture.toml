@@ -1,0 +1,11 @@
+description = "a caller's length check is weakened, so a slice in another file can underflow and panic"
+file = "src/reader.rs"
+expected_dimensions = ["correctness", "error_handling"]
+tool_catches = false
+
+[claim]
+dimension = "correctness"
+start = "if frame.is_empty() {"
+end = "Ok(payload(frame).to_vec())"
+text = "read_frame now rejects only an empty frame before calling payload; payload in frame.rs slices frame[HEADER..frame.len() - TRAILER], so a frame of one to five bytes from the network underflows or inverts the range and panics."
+severity = "high"

@@ -1,0 +1,88 @@
+{
+  "model": "jev-1.13.0",
+  "note": "Recorded from the live Jev API by tests/eval.rs live_eval; replayed offline.",
+  "responses": {
+    "5aecf00afaa39063": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "correctness.logic": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "correctness.overflow": {
+          "type": "noul",
+          "noul": 0.31
+        },
+        "error_handling.swallowed": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "unsafe.memory_access": {
+          "type": "noul",
+          "noul": 0.45
+        },
+        "unsafe.aliasing": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "idiom.clarity": {
+          "type": "score",
+          "score": 0.67,
+          "probabilities": {
+            "0": 0.34,
+            "1": 0.65,
+            "2": 0.01
+          },
+          "confidence": 0.48,
+          "legend": {}
+        },
+        "api.breaking_change": {
+          "type": "noul",
+          "noul": 0.11
+        }
+      },
+      "usage": {
+        "input_tokens": 0
+      }
+    },
+    "b97c65da6a11e719": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "support": {
+          "type": "choice",
+          "choice": "supported",
+          "probabilities": {
+            "insufficient_context": 0.34,
+            "refuted": 0.16,
+            "supported": 0.5
+          },
+          "confidence": 0.26
+        },
+        "severity": {
+          "type": "score",
+          "score": 2.95,
+          "probabilities": {
+            "0": 0.0,
+            "1": 0.01,
+            "2": 0.03,
+            "3": 0.96
+          },
+          "confidence": 0.95
+        },
+        "category": {
+          "type": "choice",
+          "choice": "real_defect",
+          "probabilities": {
+            "debatable_tradeoff": 0.03,
+            "real_defect": 0.97,
+            "style_preference": 0.0
+          },
+          "confidence": 0.95
+        }
+      },
+      "usage": {
+        "input_tokens": 0
+      }
+    }
+  }
+}

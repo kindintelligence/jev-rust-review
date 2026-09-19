@@ -1,0 +1,12 @@
+description = "an mpsc send raced in select! loses the event when the other branch wins"
+file = "src/relay.rs"
+expected_dimensions = ["async"]
+tool_catches = false
+source = "tokio docs, sync::mpsc::Sender::send cancel safety (the message is dropped with the future; use reserve): https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Sender.html"
+
+[claim]
+dimension = "async"
+start = "tokio::select! {"
+end = "() = forward(&tx, event) => {}"
+text = "In relay, forward(&tx, event) is raced against heartbeat.tick() in tokio::select!; forward in sink.rs awaits tx.send, so when the tick wins while the channel is full the send future is dropped together with the event and the event is lost."
+severity = "high"

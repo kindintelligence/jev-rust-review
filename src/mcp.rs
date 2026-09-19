@@ -1,4 +1,4 @@
-//! MCP surface: two tools over stdio. Output is compact JSON text.
+//! MCP surface: three tools over stdio. Output is compact JSON text.
 
 use crate::config::Config;
 use crate::jev;
@@ -35,6 +35,17 @@ pub struct EvaluateArgs {
     /// Cap on the number of units evaluated (default 60).
     #[serde(default)]
     pub max_units: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DiagnosticsArgs {
+    /// Repository path. Defaults to the session's project directory.
+    #[serde(default)]
+    pub repo_path: Option<String>,
+    /// The same scope string the review uses; it decides which lines count
+    /// as changed.
+    #[serde(default)]
+    pub scope: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -146,7 +157,24 @@ fn tool_error(e: impl std::fmt::Display) -> CallToolResult {
 #[tool_router]
 impl Server {
     #[tool(
-        description = "Triage Rust changes with TypeSafe Jev. Collects the diff for a scope itself, splits it into small units (changed lines plus enclosing items), asks typed yes/no and rating questions per review dimension, and returns per-unit answers, probabilities, thresholds, `flagged` (unit, dimension) pairs sorted by signal, project facts (edition, MSRV, runtime, framework profiles, and whether the diff touches tests), deterministic Cargo facts, redaction counts, token usage and cost. status is ok | partial | jev_unavailable | dry_run. Flags mark where to look; they are not findings."
+        description = "Run the deterministic tools on a Rust change and return only what touches it. Runs `cargo clippy --all-targets --message-format=json` (every rustc diagnostic, Clippy's defaults, and a fixed set of off-by-default lints for lossy casts, needless ownership, redundant clones, ignored must-use values, discarded errors, non-Send fields and wildcard enum arms), then filters in code: errors anywhere, warnings on changed lines only, and nothing the project's own lint configuration allows. When a library crate's `pub` surface changed and cargo-semver-checks is installed, runs it against the scope's old commit; it never installs anything. Suggests Miri when `unsafe` changed and does not run it. The output is fact: report it as it is, and never report the same defect again as a finding of your own. cargo runs the project's build scripts and proc macros, so ask first in an untrusted repository. status is ok | disabled | skipped | failed | timeout. Call this before evaluate_rust_changes."
+    )]
+    async fn cargo_diagnostics(
+        &self,
+        Parameters(args): Parameters<DiagnosticsArgs>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        let repo = self.repo_path(args.repo_path, &ctx).await;
+        Ok(
+            match review::diagnostics(&self.cfg, &repo, args.scope).await {
+                Ok(out) => json_result(&out),
+                Err(e) => tool_error(e),
+            },
+        )
+    }
+
+    #[tool(
+        description = "Triage Rust changes with TypeSafe Jev. Collects the diff for a scope itself, splits it into small units (changed lines plus enclosing items), asks typed yes/no and rating questions per review dimension, and returns per-unit answers, probabilities, thresholds, `flagged` (unit, dimension) pairs sorted by signal, project facts (edition, MSRV, runtime, framework profiles, and whether the diff touches tests), deterministic Cargo facts, redaction counts, token usage and cost. Every question asks for a judgement no compiler check, lint or cargo tool makes; a flag on lines where cargo_diagnostics already reported the same defect is moved to `tool_covered` and must not become a finding. status is ok | partial | jev_unavailable | dry_run. Flags mark where to look; they are not findings."
     )]
     async fn evaluate_rust_changes(
         &self,
@@ -169,7 +197,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Verify candidate Rust review findings with TypeSafe Jev before reporting them. For each finding (dimension, file, start_line, end_line, one-sentence claim naming identifiers rather than line numbers, proposed severity) the server re-reads the code itself and returns: `support` (Jev's choice of supported / refuted / insufficient_context, with probabilities), `supported` (the probability of `supported`, which the report bar applies to), Jev's independent `severity` score (level name, p_high_or_above, confidence), a `category` choice (real_defect / debatable_tradeoff / style_preference), and a `verdict`: report | insufficient_context | uncertain | dismiss. insufficient_context means the claim depends on code outside the excerpt; it is not a refutation, so keep such a finding only on strong independent evidence."
+        description = "Verify candidate Rust review findings with TypeSafe Jev before reporting them. For each finding (dimension, file, start_line, end_line, one-sentence claim naming identifiers rather than line numbers, proposed severity) the server re-reads the code itself and returns: `support` (Jev's choice of supported / refuted / insufficient_context, with probabilities), `supported` (the probability of `supported`, which the report bar applies to), Jev's independent `severity` score (level name, p_high_or_above, confidence), a `category` choice (real_defect / debatable_tradeoff / style_preference), and a `verdict`: report | insufficient_context | uncertain | dismiss | tool_reported. tool_reported means cargo_diagnostics already reported this defect on these lines (`tool` names the lint): drop the finding and let the tool's diagnostic stand. That check needs no API key, so call this tool even when Jev is unavailable. insufficient_context means the claim depends on code outside the excerpt; it is not a refutation, so keep such a finding only on strong independent evidence."
     )]
     async fn verify_rust_findings(
         &self,
@@ -204,7 +232,7 @@ impl ServerHandler for Server {
                 env!("CARGO_PKG_VERSION"),
             ))
             .with_instructions(
-                "Rust code review helpers backed by TypeSafe Jev. Call evaluate_rust_changes first to find where to look, inspect the flagged code yourself, then call verify_rust_findings on your candidate findings before reporting them. Jev numbers are routing signals; report them labelled as Jev's.",
+                "Rust code review helpers: deterministic tools first, then TypeSafe Jev for what no tool can answer. Call cargo_diagnostics for the compiler and lint facts on the changed lines, then evaluate_rust_changes to find where else to look, inspect the flagged code yourself, then call verify_rust_findings on your candidate findings before reporting them. Never report a defect a tool already reported. Jev numbers are routing signals; report them labelled as Jev's.",
             )
     }
 }

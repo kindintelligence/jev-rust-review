@@ -175,11 +175,11 @@ pub struct Git {
     root: PathBuf,
 }
 
-/// The only process spawn site in the crate: `git` with an argument vector,
-/// never a shell. Callers pass validated arguments only.
+/// The spawn site for git (`cargo_tools.rs` has the one for cargo): `git` with
+/// an argument vector, never a shell. Callers pass validated arguments only.
 #[expect(
     clippy::disallowed_methods,
-    reason = "the single audited subprocess door; see clippy.toml"
+    reason = "the audited subprocess door for git; see clippy.toml"
 )]
 fn git_command() -> Command {
     let mut c = Command::new("git");
