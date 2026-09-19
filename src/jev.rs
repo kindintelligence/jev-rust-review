@@ -109,6 +109,8 @@ impl Response {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JevError {
     MissingKey,
+    /// The configured endpoint would send the key and code insecurely.
+    InsecureEndpoint(String),
     Unauthorized,
     BadRequest(String),
     RateLimited,
@@ -122,7 +124,10 @@ pub enum JevError {
 impl JevError {
     /// Errors that mean Jev as a whole is unusable, not just this unit.
     pub fn is_fatal(&self) -> bool {
-        matches!(self, JevError::MissingKey | JevError::Unauthorized)
+        matches!(
+            self,
+            JevError::MissingKey | JevError::Unauthorized | JevError::InsecureEndpoint(_)
+        )
     }
 }
 
@@ -130,6 +135,7 @@ impl std::fmt::Display for JevError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             JevError::MissingKey => write!(f, "TYPESAFE_API_KEY is not set"),
+            JevError::InsecureEndpoint(m) => write!(f, "refusing to call Jev: {m}"),
             JevError::Unauthorized => write!(f, "Jev rejected the API key (401)"),
             JevError::BadRequest(m) => write!(f, "Jev rejected the request: {m}"),
             JevError::RateLimited => write!(f, "Jev rate limit exceeded (429) after retries"),
@@ -146,6 +152,8 @@ impl std::fmt::Display for JevError {
 pub struct Client {
     http: reqwest::Client,
     api_url: String,
+    /// Why `api_url` must not be used, if it must not.
+    endpoint_error: Option<String>,
     api_key: Option<String>,
     max_retries: u32,
     max_backoff: Duration,
@@ -157,11 +165,15 @@ impl Client {
             .timeout(cfg.timeout)
             .connect_timeout(Duration::from_secs(10))
             .user_agent(concat!("jev-rust-review/", env!("CARGO_PKG_VERSION")))
+            // A 307 or 308 would re-post the key and the code to wherever it
+            // points; treat any redirect as an error instead.
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("reqwest client builds with static config");
         Client {
             http,
             api_url: cfg.api_url.clone(),
+            endpoint_error: endpoint_error(&cfg.api_url),
             api_key: cfg.api_key.clone(),
             max_retries: cfg.max_retries,
             max_backoff: cfg.max_backoff,
@@ -173,6 +185,9 @@ impl Client {
     }
 
     pub async fn evaluate(&self, req: &Request) -> Result<Response, JevError> {
+        if let Some(e) = &self.endpoint_error {
+            return Err(JevError::InsecureEndpoint(e.clone()));
+        }
         let key = self.api_key.as_deref().ok_or(JevError::MissingKey)?;
         let url = format!("{}/v1/systemone", self.api_url);
         let mut attempt = 0u32;
@@ -221,6 +236,31 @@ impl Client {
             tokio::time::sleep(delay).await;
             attempt += 1;
         }
+    }
+}
+
+/// The key and source code travel in the request, so the endpoint must use
+/// https. Plain http is allowed only on loopback, which the tests' local mock
+/// server uses.
+pub fn endpoint_error(url: &str) -> Option<String> {
+    let parsed = match reqwest::Url::parse(url) {
+        Ok(u) => u,
+        Err(e) => return Some(format!("invalid JEV_RUST_REVIEW_API_URL: {e}")),
+    };
+    let host = parsed.host_str().unwrap_or("");
+    let loopback = host.eq_ignore_ascii_case("localhost")
+        || host
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback());
+    match parsed.scheme() {
+        "https" => None,
+        "http" if loopback => None,
+        scheme => Some(format!(
+            "JEV_RUST_REVIEW_API_URL must use https (got {scheme}://{}); plain http is allowed only for localhost",
+            parsed.host_str().unwrap_or("")
+        )),
     }
 }
 
@@ -301,6 +341,23 @@ mod tests {
             assert!(r.answer(id).is_err(), "{id}");
         }
         assert_eq!(r.usage, Usage::default());
+    }
+
+    #[test]
+    fn endpoint_must_be_https_or_loopback() {
+        assert_eq!(endpoint_error("https://api.typesafe.ai"), None);
+        assert_eq!(endpoint_error("http://127.0.0.1:9"), None);
+        assert_eq!(endpoint_error("http://localhost:8080"), None);
+        assert_eq!(endpoint_error("http://[::1]:8080"), None);
+        for bad in [
+            "http://api.typesafe.ai",
+            "http://10.0.0.5",
+            "http://localhost.evil.com",
+            "ftp://127.0.0.1",
+            "not a url",
+        ] {
+            assert!(endpoint_error(bad).is_some(), "{bad} accepted");
+        }
     }
 
     #[test]

@@ -245,6 +245,7 @@ It collects each binary from `target/<triple>/dist/`.
 ## 8. Security and privacy
 
 - The key comes only from `TYPESAFE_API_KEY`, or from the plugin's `userConfig` (`sensitive: true`) mapped to `JEV_RUST_REVIEW_API_KEY`. It is never logged. `Config`'s `Debug` output masks it.
+- The client refuses any Jev endpoint that is not https, except on localhost. It does not follow redirects, because a 307 or 308 would re-post the key and the code elsewhere.
 - The server never enumerates the process environment. `std::env::vars` is a disallowed method.
 - The server skips secret-bearing files by name: `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`, `id_ed25519*`, `*credential*` and `*secret*`.
 - It redacts token formats and high-entropy secret assignments line by line, and reports the counts.

@@ -710,3 +710,30 @@ async fn verify_dismisses_refuted_findings() {
     let res = verify_with(&["refuted", "real_defect"]).await;
     assert_eq!(res.verdict, "dismiss");
 }
+
+#[tokio::test]
+async fn insecure_endpoint_reports_the_real_reason() {
+    let r = base_repo();
+    r.write("src/lib.rs", AFTER);
+    let mut cfg = Config::default();
+    cfg.api_url = "http://api.example.com".into();
+    cfg.api_key = Some("k".into());
+    let out = review::evaluate(
+        &cfg,
+        &Client::new(&cfg),
+        &r.path(),
+        EvaluateParams::default(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(out.status, "jev_unavailable");
+    let reason = out.reason.unwrap();
+    assert!(reason.contains("https"), "{reason}");
+    for u in &out.units {
+        assert!(
+            u.error.as_deref().unwrap_or("").contains("https"),
+            "{:?}",
+            u.error
+        );
+    }
+}

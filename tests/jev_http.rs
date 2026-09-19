@@ -211,3 +211,37 @@ async fn unreachable_server_is_network_error() {
         "{e:?}"
     );
 }
+
+#[tokio::test]
+async fn insecure_endpoint_is_refused_without_sending() {
+    let mut c = Config::default();
+    c.api_url = "http://api.example.com".into();
+    c.api_key = Some("k".into());
+    let e = Client::new(&c).evaluate(&req()).await.unwrap_err();
+    assert!(matches!(e, JevError::InsecureEndpoint(_)), "{e:?}");
+    assert!(e.is_fatal());
+}
+
+#[tokio::test]
+async fn redirects_are_not_followed() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(307).insert_header("location", "/elsewhere"))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(path("/elsewhere"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(OK_BODY, "application/json"))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let e = Client::new(&cfg(&server))
+        .evaluate(&req())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(e, JevError::BadRequest(ref m) if m.contains("307")),
+        "{e:?}"
+    );
+}

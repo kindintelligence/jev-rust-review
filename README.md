@@ -169,6 +169,7 @@ Every setting is an environment variable.
 | Variable | Default | Meaning |
 |---|---|---|
 | `TYPESAFE_API_KEY` | none | Jev API key. The plugin's `userConfig` can supply it instead. |
+| `JEV_RUST_REVIEW_API_URL` | `https://api.typesafe.ai` | Jev endpoint. Must be https. Plain http is accepted only for localhost, for testing. |
 | `JEV_RUST_REVIEW_MODEL` | `jev-1.13.0` | Pinned to the version the thresholds were tuned against. `jev-latest` also works. |
 | `JEV_RUST_REVIEW_TRIAGE_THRESHOLDS` | per dimension | For example `unsafe=0.2,async.sequential_awaits=0.65`. Keys are dimension names or question ids. |
 | `JEV_RUST_REVIEW_REPORT_THRESHOLDS` | 0.70 (0.80 for unsafe, idiom, type_design) | Bar on `P(supported)` for `report`. |
