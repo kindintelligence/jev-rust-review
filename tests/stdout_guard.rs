@@ -35,12 +35,30 @@ fn offending(path: &Path, line: &str) -> bool {
     hit && !audited
 }
 
+/// Every `.rs` file under `dir`, including nested module directories.
+fn rust_files(dir: &Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            out.extend(rust_files(&path));
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            out.push(path);
+        }
+    }
+    out
+}
+
 #[test]
 fn no_stdout_writes_in_src() {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut offenders = Vec::new();
-    for entry in std::fs::read_dir(&src).unwrap() {
-        let path = entry.unwrap().path();
+    let files = rust_files(&src);
+    assert!(
+        files.iter().any(|f| f.ends_with("review/verify.rs")),
+        "the scan must include nested modules"
+    );
+    for path in files {
         if path.extension().and_then(|e| e.to_str()) != Some("rs") {
             continue;
         }
