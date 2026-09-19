@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "jev-rust-review",
+  "description": "Rust-aware code review for Claude Code, powered by TypeSafe Jev.",
+  "owner": {
+    "name": "Kind Intelligence"
+  },
+  "plugins": [
+    {
+      "name": "jev-rust-review",
+      "source": "./",
+      "description": "Rust-aware code review for Claude Code, with TypeSafe Jev triage and finding verification."
+    }
+  ]
+}

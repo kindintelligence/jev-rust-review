@@ -1,0 +1,22 @@
+{
+  "name": "jev-rust-review",
+  "version": "0.1.0",
+  "description": "Rust-aware code review: TypeSafe Jev triages the diff and verifies candidate findings; Claude diagnoses and proposes fixes.",
+  "author": {
+    "name": "Kind Intelligence",
+    "url": "https://github.com/kindintelligence"
+  },
+  "homepage": "https://github.com/kindintelligence/jev-rust-review",
+  "repository": "https://github.com/kindintelligence/jev-rust-review",
+  "license": "MIT",
+  "keywords": ["rust", "code-review", "jev", "typesafe", "mcp"],
+  "userConfig": {
+    "typesafe_api_key": {
+      "type": "string",
+      "title": "TypeSafe API key",
+      "description": "Optional. Used only when TYPESAFE_API_KEY is not set in your environment. Stored in your OS keychain or Claude credentials file, never in the plugin.",
+      "sensitive": true,
+      "required": false
+    }
+  }
+}
