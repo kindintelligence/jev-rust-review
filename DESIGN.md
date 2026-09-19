@@ -183,5 +183,5 @@ All bars are overridable by environment variable (README). They are starting poi
 - [x] README
 - [ ] CI green on GitHub
 - [ ] First tagged release (prebuilt binaries)
-- [ ] Headless Claude Code session check
+- [x] Headless Claude Code session check (2026-09-19, on D:dekiln: server connected, both tools listed, full skill run)
 - [ ] Secret scan of history; flip to public
