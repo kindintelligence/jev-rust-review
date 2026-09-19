@@ -8,7 +8,7 @@ Load this only when the project facts list `dioxus`. Dioxus changed substantiall
   - Read with `.read()` or `sig()` (for `Clone` types), or `.cloned()` / `.with(..)`.
   - Write with `.write()`, `.set(v)` or `.with_mut(..)`.
   - `Signal::new` outside hooks can grow memory until the owner drops.
-- **What subscribes.** Reading a signal with `.read()` (or any method built on it) during a component render subscribes that component. The same holds inside `use_memo`, `use_effect` and `use_resource` closures. `.peek()` reads **without** subscribing. A render that reads nothing does not re-run on change.
+- **What subscribes.** Reading a signal during a component render subscribes that component. This applies to `.read()` and any method built on it. The same holds inside `use_memo`, `use_effect` and `use_resource` closures. `.peek()` reads **without** subscribing. A render that reads nothing does not re-run on change.
 - **`ReadOnlySignal` is deprecated** in 0.7 in favour of `ReadSignal` (removal is planned for 0.8). Components can take `ReadSignal<T>` / `WriteSignal<T>`.
 - **Borrow panics.** Holding a `.read()` guard while writing the same signal panics at runtime ("already borrowed"). Example: `for x in list.read().iter() { list.write().push(..) }`. Order operations so the guards do not overlap.
 - **Never hold `.read()`/`.write()` guards across `.await`.** The docs point to Clippy's `await_holding_refcell_ref` lint.
@@ -36,7 +36,7 @@ Load this only when the project facts list `dioxus`. Dioxus changed substantiall
 - `use_resource` re-runs, cancelling the in-flight future, when a signal it reads changes. Its value is `None` while restarting, and its output is not memoised. Its futures must be cancel-safe.
 - `use_future` spawns on first render and does not run on the server. `spawn(fut)` returns a `Task` that is cancelled on unmount. `spawn_forever` survives unmount; flag it where unmount cleanup was intended.
 - Newer hooks: `use_action` (its `.call()` cancels the pending task) and `use_loader` (for `Result` futures; works with Suspense and ErrorBoundary).
-- `use_server_future(..)` must be used with `?` to suspend. **Only signals read in the closure, before the `async` block, are tracked.** Reads inside the async block do not re-run it.
+- `use_server_future(..)` must be used with `?` to suspend. It tracks **only signals read in the closure, before the `async` block**. Reads inside the async block do not re-run it.
 - Start all fetches before any conditional return, to avoid waterfalls.
 
 ## Server functions
@@ -48,5 +48,5 @@ Load this only when the project facts list `dioxus`. Dioxus changed substantiall
 
 ## Rerenders
 
-- Look for excess rerenders: a large signal read at the top of a parent re-renders every child that does not memoise.
+- Look for excess rerenders. A large signal read at the top of a parent re-renders every child that does not memoise.
 - Stores (`#[derive(Store)]`, `use_store`) give per-field and per-entry reactivity for collections. They are an improvement over `Signal<HashMap<..>>` when many children watch one entry each.

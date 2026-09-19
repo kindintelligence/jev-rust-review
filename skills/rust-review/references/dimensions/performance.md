@@ -1,10 +1,10 @@
 # Performance
 
-Report only what plausibly matters: hot paths, per-request work, or cost that grows with input size. No micro-optimisation theatre.
+Report only what plausibly matters: hot paths, per-request work, or cost that grows with input size. Do not report micro-optimisations for their own sake.
 
 ## Look for
 
-- **Allocation in hot loops.** `format!`, `to_string`, `clone`, `collect` or `Vec::new` per iteration where the value could be hoisted or reused.
+- **Allocation in hot loops.** A per-iteration `format!`, `to_string`, `clone`, `collect` or `Vec::new` whose value could be hoisted or reused.
 - **Accidental quadratic behaviour.**
   - `Vec::contains` or `iter().find` inside a loop over the same size of data;
   - `remove(0)` in a loop;
@@ -21,4 +21,6 @@ Report only what plausibly matters: hot paths, per-request work, or cost that gr
 
 ## Evidence that makes it a finding
 
-The growth: "for n requests each scanning `sessions` linearly, this is O(n²); with 10k sessions that is 10⁸ comparisons per batch." Or a benchmark and profile you ran.
+The growth. For example: "for n requests each scanning `sessions` linearly, this is O(n²); with 10k sessions that is 10⁸ comparisons per batch."
+
+A benchmark and profile you ran also counts.

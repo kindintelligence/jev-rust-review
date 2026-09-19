@@ -1,6 +1,6 @@
 # Idiom and maintainability
 
-Clarity wins. Idiom matters only when non-idiomatic code **obscures intent** or invites bugs.
+Clarity comes before idiom. Non-idiomatic code matters only when it **obscures intent** or invites bugs.
 
 ## Look for
 
@@ -11,7 +11,7 @@ Clarity wins. Idiom matters only when non-idiomatic code **obscures intent** or 
 
 ## Do not flag
 
-- An ordinary `for` loop. **Never demand iterator chains for their own sake**, because a loop with early exits and several accumulators is often clearer.
+- An ordinary `for` loop. **Never demand iterator chains for their own sake.** A loop with early exits and several accumulators is often clearer.
 - Formatting (rustfmt owns that) and naming preferences.
 - Anything that is purely taste.
 

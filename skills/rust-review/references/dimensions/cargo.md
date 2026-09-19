@@ -1,6 +1,17 @@
 # Cargo and project configuration
 
-Build configuration changes affect every user of the crate. The evaluation tool reports the deterministic facts in `cargo_facts`: added, removed and changed dependencies, git/path/wildcard sources, new build scripts, proc-macro enablement, removed features, default-feature changes, edition and MSRV changes, and lockfile churn. Report the risky ones directly.
+Build configuration changes affect every user of the crate. The evaluation tool reports the deterministic facts in `cargo_facts`:
+
+- added, removed and changed dependencies;
+- git, path and wildcard sources;
+- new build scripts;
+- proc-macro enablement;
+- removed features;
+- default-feature changes;
+- edition and MSRV changes;
+- lockfile churn.
+
+Report the risky ones directly.
 
 ## Look for
 
@@ -13,7 +24,7 @@ Build configuration changes affect every user of the crate. The evaluation tool 
   - Path dependencies outside the workspace.
   - Wildcard `*` versions.
   - Exact pins (`=1.2.3`) in libraries, which cause resolution conflicts downstream.
-- **New `build.rs` or proc-macro crates.** Both run arbitrary code at build time and deserve a look at what they do.
+- **New `build.rs` or proc-macro crates.** Both run arbitrary code at build time. Check what they do.
 - **Features:**
   - Removed or renamed features are breaking for libraries.
   - Features must be additive; mutually exclusive features break `--all-features` and downstream unification.
@@ -24,4 +35,4 @@ Build configuration changes affect every user of the crate. The evaluation tool 
 
 ## Evidence that makes it a finding
 
-The specific manifest line and its consequence, for example: "`foo = { git = \"https://…\" }` without `rev`: builds are not reproducible, and crates.io will reject the publish."
+The specific manifest line and its consequence. For example: "`foo = { git = \"https://…\" }` without `rev`: builds are not reproducible, and crates.io will reject the publish."

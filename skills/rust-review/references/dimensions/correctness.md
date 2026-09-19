@@ -8,10 +8,10 @@ Wrong results are the most expensive bugs to ship, because nothing crashes and n
 - **Integer overflow and underflow.** Debug builds panic on overflow. Release builds wrap silently unless `overflow-checks` is on. Subtracting `usize` values is the classic case: `a - b` where `b` can exceed `a`.
 - **Truncating or sign-changing `as` casts.** `x as u16`, `len as u32`, and `i64 as usize` wrap or truncate without an error. `TryFrom` and `u16::try_from(x)?` report the overflow instead.
 - **Exhaustiveness.** A `_ =>` arm over an enum the crate controls silently absorbs variants added later. Where each variant needs a decision, listing the variants lets the compiler force that decision.
-- **Invalid state transitions.** Flags that must change together but are updated separately, and early returns that skip a required reset.
+- **Invalid state transitions.** Flags that must change together but are updated separately. Early returns that skip a required reset.
 - **`Drop` order and RAII scope.** Look for:
   - `let _ = guard_returning_call();`, which drops the guard immediately, whereas `let _g =` keeps it;
-  - temporaries living to the end of a statement, such as a lock taken inside a `match` scrutinee and held across all its arms;
+  - temporaries that live until the statement ends (a lock taken in a `match` scrutinee stays held across every arm);
   - fields dropped in declaration order.
 
 ## Do not flag

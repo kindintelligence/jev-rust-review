@@ -1,6 +1,8 @@
 # Async
 
-Async bugs are rarely visible in a diff and often show up only under load. **Detect the runtime from the project facts; never assume Tokio.** If `async_runtimes` is empty, the crate may be runtime-agnostic, and runtime-specific advice does not apply.
+**Detect the runtime from the project facts; never assume Tokio.**
+
+Async bugs are rarely visible in a diff and often show up only under load. If `async_runtimes` is empty, the crate may be runtime-agnostic. Runtime-specific advice then does not apply.
 
 ## Look for
 
@@ -13,12 +15,12 @@ Async bugs are rarely visible in a diff and often show up only under load. **Det
   - synchronous database drivers.
 
   Each one stalls a worker thread and every task scheduled on it.
-- **Sync guards across `.await`.** A `std::sync::MutexGuard`, `RwLock` guard, `RefCell` borrow, or `parking_lot` guard stays held while the future is suspended. Other tasks block, and re-entrancy deadlocks. The fix is usually to scope the guard in a block that ends before the await. An async mutex is the right fix only when the lock genuinely must span the await.
-- **Cancellation safety.** In `select!`, losing branches are dropped. A future that has consumed part of a stream (`read_exact`, `read_to_end`, `write_all`) or queued for a lock loses that progress. Accept loops in `select!` need cancel-safe futures, or futures pinned outside the loop and polled by `&mut`.
+- **Sync guards across `.await`.** A sync guard stays held while the future is suspended. This covers a `std::sync::MutexGuard`, `RwLock` guard, `RefCell` borrow, or `parking_lot` guard. Other tasks block, and re-entrancy deadlocks. The fix is usually to scope the guard in a block that ends before the await. An async mutex is the right fix only when the lock genuinely must span the await.
+- **Cancellation safety.** In `select!`, losing branches are dropped. A dropped future loses its progress. That includes part of a stream it consumed (`read_exact`, `read_to_end`, `write_all`), or its place in a lock queue. Accept loops in `select!` need cancel-safe futures, or futures pinned outside the loop and polled by `&mut`.
 - **Detached tasks.** A `spawn` whose handle is dropped has no owner. Its panics and errors vanish, and shutdown cannot stop it.
-- **Unbounded concurrency or buffering.** Unbounded channels fed faster than they drain, and one task per input item with no semaphore or `buffer_unordered(n)`.
+- **Unbounded concurrency or buffering.** Unbounded channels fed faster than they drain. One task per input item with no semaphore or `buffer_unordered(n)`.
 - **Accidental sequentialisation.** Independent awaits in a loop that could run with `join_all` or `JoinSet`. Report this only when latency plausibly matters.
-- **Channel deadlocks and leaked tasks.** A sender kept alive so `recv()` never returns `None`, and bounded channels in both directions between two tasks.
+- **Channel deadlocks and leaked tasks.** A sender kept alive so `recv()` never returns `None`. Bounded channels in both directions between two tasks.
 - **`Pin` misuse.** Moving a value after pinning, or a manual `Future` implementation that breaks pinning. Pair with the unsafe reference if `unsafe` is involved.
 - **Async where sync would be simpler.** An `async fn` with no await points, adding runtime coupling for nothing.
 

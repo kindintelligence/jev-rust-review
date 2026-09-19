@@ -4,7 +4,7 @@ Load this only when the project facts list `axum`.
 
 ## Extractors
 
-- Extractors run left to right. The body can be consumed once, so the body extractor (`Json`, `Form`, `String`, `Bytes`, `Request`) must be the **last** argument. Only it may implement `FromRequest`; the others must implement `FromRequestParts`. **The compiler enforces this**: the handler does not implement `Handler` otherwise. So do not report it; `cargo check` does.
+- Extractors run left to right. The body can be consumed only once. So the body extractor (`Json`, `Form`, `String`, `Bytes`, `Request`) must be the **last** argument. Only it may implement `FromRequest`; the others must implement `FromRequestParts`. **The compiler enforces this**: the handler does not implement `Handler` otherwise. So do not report it; `cargo check` does.
 - When an extractor fails, its rejection *is* the response and the handler never runs. The default rejections are plain-text 4xx responses. APIs that promise JSON errors need `Result<Json<T>, JsonRejection>` or a custom extractor that wraps the built-in one.
 - `Option<T>` extractors only work where `OptionalFromRequestParts`/`OptionalFromRequest` is implemented (0.8). They give `None` for *missing* data but still reject *malformed* data.
 
@@ -20,12 +20,15 @@ Load this only when the project facts list `axum`.
 - With `tower::ServiceBuilder`, layers run **top to bottom**. The docs recommend `ServiceBuilder` for multiple layers because the order reads naturally.
 - `route_layer` applies only to matched routes, not the fallback. Use it for auth that should still let 404s through.
 - Fallible middleware needs `HandleErrorLayer`, because services must have `Infallible` errors.
-- Check that authentication runs before handlers that need it, that timeouts wrap what they should, and that CORS sees preflight requests.
+- Check that:
+  - authentication runs before handlers that need it;
+  - timeouts wrap what they should;
+  - CORS sees preflight requests.
 
 ## Responses and errors
 
 - Handlers return `impl IntoResponse`, often `Result<T, AppError>` where `AppError: IntoResponse`. A `From<anyhow::Error>` impl lets `?` work.
-- Look for internal error text (database errors, file paths) sent to clients, and for failures returned with a 2xx status.
+- Look for internal error text (database errors, file paths) sent to clients. Also look for failures returned with a 2xx status.
 
 ## Blocking in handlers
 

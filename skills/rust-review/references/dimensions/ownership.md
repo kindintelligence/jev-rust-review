@@ -1,13 +1,18 @@
 # Ownership and borrowing
 
-The goal is APIs and code that do not force needless allocation or copying, and lifetimes that reflect a sound design rather than a workaround.
+Good APIs and code do not force needless allocation or copying. Their lifetimes reflect a sound design rather than a workaround.
 
 ## Look for
 
-- **Needless ownership transfer.** A parameter typed `String`, `Vec<T>` or `PathBuf` that the function only reads forces callers to allocate or give up their value. `&str`, `&[T]`, `&Path`, or `impl AsRef<Path>` would do.
-- **Clones that are plausibly unnecessary and costly.** Examples: cloning a large `Vec` or `String` inside a loop, `.to_vec()` just to iterate, `.clone()` to work around a borrow that a narrower scope would satisfy.
+- **Needless ownership transfer.** The function only reads a parameter typed `String`, `Vec<T>` or `PathBuf`. That forces callers to allocate or give up their value. `&str`, `&[T]`, `&Path`, or `impl AsRef<Path>` would do.
+- **Clones that are plausibly unnecessary and costly.** Examples:
+  - cloning a large `Vec` or `String` inside a loop;
+  - `.to_vec()` only to iterate;
+  - `.clone()` to work around a borrow that a narrower scope would satisfy.
 - **References held longer than needed**, which force later code into clones or `RefCell`.
-- **Lifetime workarounds that hint at a design problem.** For example, `'static` bounds added to silence an error, or `Box::leak` in a non-startup path.
+- **Lifetime workarounds that hint at a design problem.** Examples:
+  - `'static` bounds added to silence an error;
+  - `Box::leak` in a non-startup path.
 
 ## Do not flag
 
@@ -16,8 +21,11 @@ The goal is APIs and code that do not force needless allocation or copying, and 
 - A function that stores, moves, or mutates the owned argument. Owning is correct there.
 - Clones in tests, examples, and one-shot setup code.
 
-A `.clone()` is only interesting when there is a plausible argument that it is unnecessary, expensive on a hot path, or hiding an ownership-design problem. Make that argument explicitly.
+A `.clone()` is only interesting with a plausible argument against it. State explicitly whether it is unnecessary, expensive on a hot path, or hiding an ownership-design problem.
 
 ## Evidence that makes it a finding
 
-The value is large or the copy is repeated (in a loop or per request), **and** there is a concrete alternative that compiles: "borrow `&self.items` instead; nothing after line 40 mutates it".
+**Both** of these must hold:
+
+- The value is large, or the copy is repeated (in a loop or per request).
+- A concrete alternative compiles. For example: "borrow `&self.items` instead; nothing after line 40 mutates it".

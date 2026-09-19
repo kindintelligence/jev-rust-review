@@ -4,7 +4,7 @@ Jev does not judge test adequacy. It cannot trace coverage across files. The eva
 
 ## Look for
 
-- **Changed behaviour without a changed or added test.** Start with bug fixes: a fix without a regression test tends to regress.
+- **Changed behaviour without a changed or added test.** Start with bug fixes. A fix without a regression test tends to regress.
 - **Tests that do not assert the behaviour.**
   - A test that calls the function and asserts nothing.
   - A test that asserts only `is_ok()` on a result whose value matters.

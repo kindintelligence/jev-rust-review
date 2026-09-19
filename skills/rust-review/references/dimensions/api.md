@@ -22,9 +22,13 @@ For libraries, the public API is a promise. For binaries, this dimension mostly 
 
 ## Do not flag
 
-- Changes to `pub(crate)` or private items, binary-only crates, or crates marked unstable (`0.x` minor bumps are allowed to break, though it is still worth one line).
+- Changes to `pub(crate)` or private items.
+- Changes in binary-only crates.
+- Changes in crates marked unstable. `0.x` minor bumps are allowed to break, though the break is still worth one line.
 - Additive changes.
 
 ## Evidence that makes it a finding
 
-A downstream line that compiled before and does not now: "`mylib::parse(input)` no longer compiles: missing argument `strict`." The version bump that matches it (major, or minor for `0.x`) is the fix, or a deprecation path.
+A downstream line that compiled before and does not compile now. For example: "`mylib::parse(input)` no longer compiles: missing argument `strict`."
+
+The fix is the matching version bump (major, or minor for `0.x`), or a deprecation path.
