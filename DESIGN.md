@@ -220,7 +220,7 @@ Environment variables override every bar (see the README). The bars are starting
 `.mcp.json` runs `sh ${CLAUDE_PLUGIN_ROOT}/scripts/launch.sh`. The launcher runs the first binary that reports the plugin's version:
 
 1. `JEV_RUST_REVIEW_BIN`;
-2. `${CLAUDE_PLUGIN_ROOT}/target/release/jev-rust-review`, for local development. It is copied into the cache whenever it is newer than the cached copy, so a rebuild at the same version takes effect;
+2. `${CLAUDE_PLUGIN_ROOT}/target/release/jev-rust-review`, for local development. When it is newer than the cached copy, it replaces it. A rebuild at the same version then takes effect;
 3. the cached `${CLAUDE_PLUGIN_DATA}/bin/<version>/jev-rust-review`;
 4. `jev-rust-review` on `PATH`, for example from `cargo install`;
 5. a prebuilt release asset for the host triple, verified against the release's `SHA256SUMS` before it is cached;
