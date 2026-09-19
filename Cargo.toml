@@ -1,0 +1,44 @@
+[package]
+name = "jev-rust-review"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "MCP server for Rust-aware code review: TypeSafe Jev triage and finding verification for Claude Code and other agents"
+license = "MIT"
+repository = "https://github.com/kindintelligence/jev-rust-review"
+readme = "README.md"
+keywords = ["rust", "code-review", "mcp", "claude-code", "jev"]
+categories = ["development-tools"]
+exclude = ["fixtures/", ".github/", "skills/", "agents/", ".claude-plugin/"]
+
+[lib]
+name = "jev_rust_review"
+path = "src/lib.rs"
+
+[[bin]]
+name = "jev-rust-review"
+path = "src/main.rs"
+
+[dependencies]
+rmcp = { version = "3.4.0", features = ["server", "macros", "transport-io"] }
+schemars = "1"
+tokio = { version = "1.47", features = ["macros", "rt-multi-thread", "io-std", "process", "time", "sync"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+syn = { version = "2", default-features = false, features = ["full", "parsing", "printing"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+regex = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "ansi"] }
+
+[dev-dependencies]
+wiremock = "0.6"
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true
