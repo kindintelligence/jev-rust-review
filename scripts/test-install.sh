@@ -34,9 +34,15 @@ CLEAN_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | while read -r d; do
     [ -n "$d" ] && [ ! -x "$d/jev-rust-review$EXE" ] && printf '%s:' "$d"
 done)"
 
+# The same PATH without cargo, so a scenario cannot pass via a source build.
+NOCARGO_PATH="$(printf '%s' "$CLEAN_PATH" | tr ':' '\n' | while read -r d; do
+    [ -n "$d" ] && [ ! -x "$d/cargo$EXE" ] && printf '%s:' "$d"
+done)"
+
 # Drive one MCP initialize through the launcher; succeed if the server answers.
+# Args: data dir, NO_DOWNLOAD (default 1), release URL, PATH (default CLEAN_PATH).
 handshake() {
-    CLAUDE_PLUGIN_ROOT="$PLUGIN" CLAUDE_PLUGIN_DATA="$1" PATH="$CLEAN_PATH" \
+    CLAUDE_PLUGIN_ROOT="$PLUGIN" CLAUDE_PLUGIN_DATA="$1" PATH="${4:-$CLEAN_PATH}" \
         JEV_RUST_REVIEW_NO_DOWNLOAD="${2:-1}" JEV_RUST_REVIEW_RELEASE_URL="${3:-}" \
         "$PY" - "$PLUGIN/scripts/launch.sh" <<'PYEOF'
 import json, subprocess, sys
@@ -98,16 +104,14 @@ else
     (cd "$REL" && shasum -a 256 "$ASSET" >SHA256SUMS)
 fi
 REL_URL="file://$REL"
-case "$REL" in [A-Za-z]:*) REL_URL="file:///$REL" ;; esac
-handshake "$WORK/data-b" 0 "$REL_URL" 2>"$WORK/b.err" || { cat "$WORK/b.err" >&2; fail "B: download path"; }
+# Native Windows curl needs a drive-letter path.
+command -v cygpath >/dev/null 2>&1 && REL_URL="file:///$(cygpath -m "$REL")"
+handshake "$WORK/data-b" 0 "$REL_URL" "$NOCARGO_PATH" 2>"$WORK/b.err" || { cat "$WORK/b.err" >&2; fail "B: download path"; }
 grep -q "checksum verified" "$WORK/b.err" || fail "B: expected checksum verification"
 echo "B: verified download path OK"
 
 # ---- C: tampered checksum is refused --------------------------------------------
 sed 's/^[0-9a-f]\{8\}/00000000/' "$REL/SHA256SUMS" >"$REL/SHA256SUMS.bad" && mv "$REL/SHA256SUMS.bad" "$REL/SHA256SUMS"
-NOCARGO_PATH="$(printf '%s' "$CLEAN_PATH" | tr ':' '\n' | while read -r d; do
-    [ -n "$d" ] && [ ! -x "$d/cargo$EXE" ] && printf '%s:' "$d"
-done)"
 set +e
 MSG="$(CLAUDE_PLUGIN_ROOT="$PLUGIN" CLAUDE_PLUGIN_DATA="$WORK/data-c" PATH="$NOCARGO_PATH" \
     JEV_RUST_REVIEW_RELEASE_URL="$REL_URL" sh "$PLUGIN/scripts/launch.sh" </dev/null 2>&1 >/dev/null)"

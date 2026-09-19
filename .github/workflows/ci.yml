@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # CI never needs a TypeSafe key: Jev is mocked at the HTTP boundary, and
+  # the eval replays recorded answers.
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+      - run: bash scripts/smoke.sh
+      - name: Fresh install (empty data dir, source build, verified download, tampered checksum)
+        run: bash scripts/test-install.sh
+
+  msrv:
+    name: msrv (1.88)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --all-targets --locked
+
+  plugin:
+    name: plugin manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: JSON parses and versions agree
+        run: |
+          python3 - <<'PY'
+          import json, re
+          plugin = json.load(open(".claude-plugin/plugin.json"))
+          json.load(open(".claude-plugin/marketplace.json"))
+          json.load(open(".mcp.json"))
+          version = re.search(r'^version = "(.+)"$', open("Cargo.toml").read(), re.M).group(1)
+          assert plugin["version"] == version, (plugin["version"], version)
+          print("plugin", plugin["name"], version)
+          PY
+      - run: sh -n scripts/launch.sh

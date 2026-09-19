@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest, musl: true }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm, musl: true }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest, exe: .exe }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - if: matrix.musl
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      # Shipped binaries use the slow-to-build `dist` profile (thin LTO, one
+      # codegen unit); `release` stays quick for the launcher's local fallback.
+      - run: cargo build --locked --profile dist --target ${{ matrix.target }}
+      - name: Check the version the launcher will compare against
+        # The x86_64 macOS binary is cross-built on an arm64 runner.
+        if: matrix.target != 'x86_64-apple-darwin'
+        shell: bash
+        run: |
+          out="$(target/${{ matrix.target }}/dist/jev-rust-review${{ matrix.exe }} --version)"
+          test "$out" = "jev-rust-review ${GITHUB_REF_NAME#v}"
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p dist
+          tar -czf "dist/jev-rust-review-${{ matrix.target }}.tar.gz" \
+            -C "target/${{ matrix.target }}/dist" "jev-rust-review${{ matrix.exe }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jev-rust-review-${{ matrix.target }}
+          path: dist/*.tar.gz
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches the crate version
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          test "v$version" = "$GITHUB_REF_NAME"
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum *.tar.gz > SHA256SUMS && cat SHA256SUMS
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/SHA256SUMS \
+            --title "$GITHUB_REF_NAME" --notes "Prebuilt jev-rust-review binaries. scripts/launch.sh verifies each download against SHA256SUMS."
