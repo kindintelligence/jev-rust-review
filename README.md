@@ -82,7 +82,7 @@ The launcher finds the binary on `PATH`. You can also point `JEV_RUST_REVIEW_BIN
 claude -p "list your MCP tools" --output-format stream-json --verbose | head -1   # init event lists mcp_servers
 ```
 
-**Local development.** Build first, then load the checkout for a session. The launcher uses `target/release` when its version matches.
+**Local development.** Build first, then load the checkout for a session. The launcher checks `target/release` before its cache. It refreshes the cached copy whenever you rebuild.
 
 ```bash
 cargo build --release

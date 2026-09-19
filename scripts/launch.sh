@@ -6,9 +6,10 @@
 # plugin version, in this order:
 #
 #   1. $JEV_RUST_REVIEW_BIN (manual installs)
-#   2. the cached binary in $CLAUDE_PLUGIN_DATA/bin/<version>/
-#   3. `jev-rust-review` on PATH (e.g. from `cargo install --git ...`)
-#   4. $CLAUDE_PLUGIN_ROOT/target/release/jev-rust-review (local development)
+#   2. $CLAUDE_PLUGIN_ROOT/target/release/jev-rust-review (local development),
+#      copied into the cache whenever it is newer than the cached copy
+#   3. the cached binary in $CLAUDE_PLUGIN_DATA/bin/<version>/
+#   4. `jev-rust-review` on PATH (e.g. from `cargo install --git ...`)
 #   5. a prebuilt release asset, verified against the release's SHA256SUMS
 #   6. a local `cargo build --release --locked`, in the background; waits up
 #      to $JEV_RUST_REVIEW_BUILD_WAIT seconds (default 20, below Claude
@@ -81,18 +82,24 @@ if [ -n "${JEV_RUST_REVIEW_BIN:-}" ]; then
     run "$JEV_RUST_REVIEW_BIN"
 fi
 
-# 2. Cached binary for this version.
-version_ok "$BIN" && run "$BIN"
-
-# 3. A matching binary on PATH.
-if onpath="$(command -v "jev-rust-review$EXE" 2>/dev/null)" && version_ok "$onpath"; then
-    run "$onpath"
+# 2. A local release build (plugin loaded with --plugin-dir from a checkout).
+# Checked before the cache so a rebuild at the same version is picked up. It
+# runs from the cache, not target/, so cargo can overwrite target/ while a
+# session is open (Windows locks a running executable).
+LOCAL="$ROOT/target/release/jev-rust-review$EXE"
+if version_ok "$LOCAL"; then
+    if [ ! -f "$BIN" ] || [ "$LOCAL" -nt "$BIN" ]; then
+        install_bin "$LOCAL"
+    fi
+    run "$BIN"
 fi
 
-# 4. A local release build (plugin loaded with --plugin-dir from a checkout).
-if version_ok "$ROOT/target/release/jev-rust-review$EXE"; then
-    install_bin "$ROOT/target/release/jev-rust-review$EXE"
-    run "$BIN"
+# 3. Cached binary for this version.
+version_ok "$BIN" && run "$BIN"
+
+# 4. A matching binary on PATH.
+if onpath="$(command -v "jev-rust-review$EXE" 2>/dev/null)" && version_ok "$onpath"; then
+    run "$onpath"
 fi
 
 # 5. Prebuilt release asset, verified before it is cached.

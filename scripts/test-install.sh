@@ -6,7 +6,9 @@
 #      budget, the detached build finishes, and the next launch serves MCP;
 #   B. download: a (simulated) release asset with a matching SHA256SUMS is
 #      installed and served;
-#   C. tampered checksum: the asset is refused.
+#   C. tampered checksum: the asset is refused;
+#   D. local development: a rebuilt target/release binary at the same version
+#      replaces the cached one.
 # Needs: git, cargo, python3, tar, sha256sum or shasum.
 set -euo pipefail
 
@@ -122,4 +124,13 @@ echo "C: $MSG"
 echo "$MSG" | grep -q "checksum verification failed" || fail "C: expected a checksum failure message"
 [ ! -e "$WORK/data-c/bin/$VERSION/jev-rust-review$EXE" ] || fail "C: tampered binary was installed"
 echo "C: tampered checksum refused OK"
+
+# ---- D: a newer local build replaces the cached binary ----------------------------
+touch "$WORK/marker"
+sleep 1
+mkdir -p "$PLUGIN/target/release"
+cp "$BIN_A" "$PLUGIN/target/release/jev-rust-review$EXE"
+CLAUDE_PLUGIN_ROOT="$PLUGIN" CLAUDE_PLUGIN_DATA="$DATA_A" PATH="$NOCARGO_PATH"     sh "$PLUGIN/scripts/launch.sh" --install </dev/null >/dev/null 2>&1 || fail "D: launcher failed"
+[ "$BIN_A" -nt "$WORK/marker" ] || fail "D: the cached binary was not refreshed from target/release"
+echo "D: newer local build refreshes the cache OK"
 echo "test-install OK"

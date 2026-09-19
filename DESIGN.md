@@ -220,9 +220,9 @@ Environment variables override every bar (see the README). The bars are starting
 `.mcp.json` runs `sh ${CLAUDE_PLUGIN_ROOT}/scripts/launch.sh`. The launcher runs the first binary that reports the plugin's version:
 
 1. `JEV_RUST_REVIEW_BIN`;
-2. the cached `${CLAUDE_PLUGIN_DATA}/bin/<version>/jev-rust-review`;
-3. `jev-rust-review` on `PATH`, for example from `cargo install`;
-4. `${CLAUDE_PLUGIN_ROOT}/target/release/jev-rust-review`, for local development;
+2. `${CLAUDE_PLUGIN_ROOT}/target/release/jev-rust-review`, for local development. It is copied into the cache whenever it is newer than the cached copy, so a rebuild at the same version takes effect;
+3. the cached `${CLAUDE_PLUGIN_DATA}/bin/<version>/jev-rust-review`;
+4. `jev-rust-review` on `PATH`, for example from `cargo install`;
 5. a prebuilt release asset for the host triple, verified against the release's `SHA256SUMS` before it is cached;
 6. a local `cargo build --release --locked`, detached with `setsid` or `nohup`.
 
@@ -240,7 +240,7 @@ It collects each binary from `target/<triple>/dist/`.
 
 **Build time.** A cold `cargo build --release` took 75 s with aws-lc-rs, the default rustls provider. aws-lc-sys spent 40 s of that compiling C. With `ring`, the build took 65 s. Neither fits the 30 s window. So step 5 comes first, and step 6 never blocks startup. Switching to `ring` would save about 10 s, which is not worth moving off reqwest's default provider.
 
-`scripts/test-install.sh` tests both paths on every CI run. It builds from source with an empty data dir, installs a verified download, and refuses a tampered checksum.
+`scripts/test-install.sh` tests both paths on every CI run. It builds from source with an empty data dir, installs a verified download, and refuses a tampered checksum. It also checks that a rebuilt local binary replaces the cached one.
 
 ## 8. Security and privacy
 
