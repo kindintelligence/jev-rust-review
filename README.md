@@ -2,6 +2,8 @@
 
 Rust-aware code review for Claude Code (and other MCP clients). [TypeSafe](https://typesafe.ai)'s Jev model does fast, cheap triage and independent verification. Claude does the reasoning, root-cause analysis and fixes.
 
+> **In active development.** This is an early release (v0.1). Interfaces, question ids, thresholds and output formats may change between versions, and prebuilt binaries are not published yet: the first launch builds from source (see [Install](#install)).
+>
 > Independent project. It is not affiliated with or endorsed by TypeSafe or Anthropic.
 
 ```text
