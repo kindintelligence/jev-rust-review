@@ -1,6 +1,6 @@
 # Testing
 
-Jev does not judge test adequacy. It cannot trace coverage across files. The evaluation tool reports facts instead: `tests.test_code_changed`, and which units are test code. The judgment is yours.
+Jev does not judge test adequacy. It cannot trace coverage across files. The evaluation tool reports facts instead: `project.tests.diff_touches_tests`, and which changed units are test code. Jev asks one local question, `testing.weak_assertion`: whether a changed test asserts on what it exercises. The adequacy judgment is yours.
 
 ## Look for
 

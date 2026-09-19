@@ -17,7 +17,6 @@ async fn main() -> std::process::ExitCode {
 
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
-        .with_ansi(false)
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_env("JEV_RUST_REVIEW_LOG")
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),

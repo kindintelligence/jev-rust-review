@@ -299,7 +299,7 @@ async fn test_code_role_and_cfg_test_detection() {
     );
     r.write("tests/it.rs", "#[test]\nfn it() {\n    assert!(true);\n}\n");
     let out = dry(&r, None).await;
-    assert!(out.tests.test_code_changed);
+    assert!(out.project.tests.diff_touches_tests);
     let units = json(&out.units);
     for u in units.as_array().unwrap() {
         assert_eq!(u["role"], "test", "{u}");
@@ -629,8 +629,8 @@ async fn verify_rereads_code_and_marks_lines() {
         p["state"].get("severity").is_none(),
         "proposed severity must not reach Jev"
     );
-    assert_eq!(p["questions"]["supported"]["type"], "noul");
-    assert_eq!(p["questions"]["severity"]["type"], "choice");
+    assert_eq!(p["questions"]["support"]["type"], "choice");
+    assert_eq!(p["questions"]["severity"]["type"], "score");
     assert_eq!(p["questions"]["category"]["type"], "choice");
 }
 
@@ -667,11 +667,10 @@ async fn verify_validates_findings() {
     );
 }
 
-#[tokio::test]
-async fn verify_with_mock_produces_verdicts() {
+async fn verify_with(high: &[&str]) -> review::VerifyResult {
     let r = base_repo();
     r.write("src/lib.rs", AFTER);
-    let (_s, cfg) = live_mock(&["supported"]).await;
+    let (_s, cfg) = live_mock(high).await;
     let out = review::verify(
         &cfg,
         &Client::new(&cfg),
@@ -683,10 +682,31 @@ async fn verify_with_mock_produces_verdicts() {
     .await
     .unwrap();
     assert_eq!(out.status, "ok");
-    let res = &out.results[0];
-    assert_eq!(res.supported, Some(0.9));
-    // ScriptedJev picks "high" severity and "real_defect".
-    assert_eq!(res.severity.as_ref().unwrap().choice, "high");
+    out.results.into_iter().next().unwrap()
+}
+
+#[tokio::test]
+async fn verify_with_mock_produces_verdicts() {
+    let res = verify_with(&["supported", "real_defect", "severity"]).await;
+    assert_eq!(res.support.as_ref().unwrap().choice, "supported");
+    assert_eq!(res.supported, Some(0.85));
+    let sev = res.severity.as_ref().unwrap();
+    assert_eq!(sev.name, "high");
+    assert!(sev.p_high_or_above > 0.85);
     assert_eq!(res.severity_agrees, Some(true));
     assert_eq!(res.verdict, "report");
+}
+
+#[tokio::test]
+async fn verify_keeps_insufficient_context_findings() {
+    let res = verify_with(&["insufficient_context", "real_defect"]).await;
+    assert_eq!(res.verdict, "insufficient_context");
+    assert_eq!(res.severity.as_ref().unwrap().name, "low");
+    assert_eq!(res.severity_agrees, Some(false));
+}
+
+#[tokio::test]
+async fn verify_dismisses_refuted_findings() {
+    let res = verify_with(&["refuted", "real_defect"]).await;
+    assert_eq!(res.verdict, "dismiss");
 }

@@ -461,11 +461,13 @@ fn verify_response(res: &review::VerifyResult, model: &str) -> serde_json::Value
         serde_json::json!({"type": "choice", "choice": c.choice,
             "probabilities": c.probabilities, "confidence": c.confidence})
     };
+    let sev = res.severity.as_ref().unwrap();
     serde_json::json!({
         "model": model,
         "answers": {
-            "supported": {"type": "noul", "noul": res.supported},
-            "severity": choice(res.severity.as_ref().unwrap()),
+            "support": choice(res.support.as_ref().unwrap()),
+            "severity": {"type": "score", "score": sev.level,
+                "probabilities": sev.probabilities, "confidence": sev.confidence},
             "category": choice(res.category.as_ref().unwrap()),
         },
         "usage": {"input_tokens": 0}

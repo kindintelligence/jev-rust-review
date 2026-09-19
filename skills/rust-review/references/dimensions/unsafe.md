@@ -6,7 +6,7 @@ Every changed `unsafe` block gets focused review.
 
 ## Look for
 
-- **Safety documentation.** Every `unsafe` block needs a `// SAFETY:` comment, and every `unsafe fn` needs a `# Safety` doc section. They should state the invariants relied on, and the code must actually uphold them.
+- **Safety documentation is Clippy's job.** The skill runs Clippy with `undocumented_unsafe_blocks` and `missing_safety_doc`; report those warnings as they are. Your job is the harder part: a `// SAFETY:` comment or `# Safety` section that exists must state invariants the code actually upholds.
 - **Safe functions with unchecked preconditions.** A safe `pub fn` that passes caller input to `get_unchecked`, `from_raw_parts`, `from_utf8_unchecked`, or pointer arithmetic without checking it is unsound. Any safe caller can trigger UB.
 - **Pointer validity:**
   - null;
@@ -26,7 +26,7 @@ Every changed `unsafe` block gets focused review.
 ## Do not flag
 
 - `unsafe` with a correct `SAFETY` comment whose invariant the code checks just above. For example, a bounds check followed by `get_unchecked` in the same function.
-- A missing SAFETY comment on otherwise obviously sound code. Report it at most as low severity, and never as unsoundness.
+- A missing SAFETY comment on its own. Clippy reports it; never turn it into an unsoundness claim.
 
 ## Evidence that makes it a finding
 

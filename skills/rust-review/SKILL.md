@@ -34,8 +34,8 @@ Call `evaluate_rust_changes` with `scope` (and `dry_run` if asked). Read these f
 - `flagged`: (unit, dimension) pairs, strongest first. **A flag says where to look. It is not a finding.**
 - `references`: the reference files to load, relative to this skill directory (`${CLAUDE_SKILL_DIR}`). Load **only** those, with Read, before judging code in that dimension.
 - `project`: edition, MSRV (`rust_version`), crate kind, `async_runtimes`, and profiles. Never assume Tokio: use only what `async_runtimes` says.
+- `project.tests`: whether the diff touches test code (`diff_touches_tests`), and which changed units are and are not test code. This is computed from the diff, not judged by Jev. If behaviour changed and no tests did, consider that under the testing dimension.
 - `cargo_facts`: deterministic dependency, feature, build-script and lockfile changes. Report risky ones directly; they need no Jev verification.
-- `tests`: whether any test code changed. If behaviour changed and no tests did, consider that under the testing dimension.
 - `skipped` and `redactions`: mention any skipped units or redactions in one line at the end of the report.
 
 ## 3. Collect cargo evidence
@@ -45,6 +45,8 @@ Skip this step if `cargo.enabled` is false or `--no-cargo` was given. Otherwise 
 `cargo` runs build scripts and proc macros from the project and its dependencies. If the repository is untrusted, ask before running it.
 
 Keep only diagnostics that touch changed files. A compiler error or failing test in changed code is a finding with deterministic evidence.
+
+The clippy command enables `clippy::undocumented_unsafe_blocks` and `clippy::missing_safety_doc`. Undocumented `unsafe` is Clippy's job, not Jev's: report those warnings on changed code directly, as low severity with the lint as evidence, unless you can also show the code is unsound (then it is an unsafe finding in its own right, verified in step 5).
 
 ## 4. Inspect flagged code
 
@@ -61,7 +63,7 @@ A candidate finding needs:
 
 - a concrete failure: the input, interleaving, or call that breaks;
 - the exact file and line range, taken from the code you read;
-- **one** defect, stated in **one** sentence that names identifiers, not line numbers. Everything the claim relies on must be inside the line range you give;
+- **one** defect, stated in **one** sentence that names identifiers, not line numbers. Put everything the claim relies on inside the line range you give. When the defect depends on code elsewhere (lock ordering across functions, callers of a changed `pub` API), say so in your evidence; Jev will likely answer `insufficient_context`;
 - a severity: critical, high, medium, or low;
 - your own confidence in words, High or Medium, with the evidence. Drop Low-confidence ideas.
 
@@ -70,9 +72,12 @@ A candidate finding needs:
 Call `verify_rust_findings` with all candidates (at most 20) and the same `scope`. The server re-reads the code itself. For each result:
 
 - `verdict: report`: keep it.
+- `verdict: insufficient_context`: Jev could not judge the claim from the local code (its `support` answer was `insufficient_context`). **This is not a refutation.** Keep the finding if your own confidence is High, and say in the report that Jev could not verify it from local context. If your confidence is Medium, move it to "considered and dismissed".
 - `verdict: uncertain`: keep it **only** if deterministic evidence (compiler error, clippy lint, failing test, or a reproduction you ran) proves it independently. Otherwise move it to "considered and dismissed".
-- `verdict: dismiss`: drop it. At most, list it under "considered and dismissed".
+- `verdict: dismiss`: Jev chose `refuted`, the claim is a style preference, or `supported` is below the dismiss bar. Drop it; at most list it under "considered and dismissed".
 - `status: invalid` or `error`: fix the input (line range, file, severity) and retry once. Otherwise treat the finding as unverified and apply the same rule as `uncertain`.
+
+The numbers you may quote: `supported` (Jev's probability that the claim is supported), `severity.name`, `severity.p_high_or_above` (Jev's probability mass on high or critical) and `severity.confidence`, and the `category` choice.
 
 ## 6. Write the report
 
@@ -87,12 +92,19 @@ Why it matters in Rust: std guards are not released at `.await`; the future
 holds the lock for as long as it is suspended.
 Fix: copy the needed value out, drop the guard, then await.
 Confidence: High (guard binding at :83 is live at the await on :88)
-Jev: claim supported 0.93 · severity "critical" (confidence 0.81)
+Jev: claim supported 0.93 · severity "critical" (P(high or above) 0.88, confidence 0.81)
+```
+
+A kept `insufficient_context` finding uses this Jev line instead:
+
+```text
+Jev: could not verify from local context (insufficient_context 0.74); kept on
+Claude's High confidence
 ```
 
 Rules:
 
-- **Numbers.** The only percentages or probabilities in the report are Jev's, labelled as Jev's. Use the `supported` value and the severity choice and confidence from `verify_rust_findings`. Your own certainty is stated in words (High or Medium) with its evidence. Never invent a number.
+- **Numbers.** The only percentages or probabilities in the report are Jev's, labelled as Jev's. Use `supported`, the severity name, `p_high_or_above` and confidence, and the `support` choice from `verify_rust_findings`. Your own certainty is stated in words (High or Medium) with its evidence. Never invent a number.
 - **Severity.** If Jev's severity differs from yours, show both and explain which you used.
 - **No style trivia.** Skip style points unless project policy asks for them (CLAUDE.md, `clippy.toml`, lint configuration).
 - **Dismissed candidates.** Put anything considered but dismissed in a short collapsed `<details>` block titled "Considered and dismissed", one line each, with the Jev number that dismissed it.

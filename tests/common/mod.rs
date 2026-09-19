@@ -72,47 +72,60 @@ impl TestRepo {
 
 pub const MANIFEST: &str = "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\nrust-version = \"1.80\"\n\n[dependencies]\ntokio = { version = \"1\", features = [\"full\"] }\n";
 
-/// A mock Jev that answers every question it receives. Nouls whose id is in
-/// `high` get 0.9, everything else 0.05. Choice/Score get fixed shapes.
+/// A mock Jev that answers every question it receives, steered by `high`:
+/// - a Noul whose id is in `high` gets 0.9, otherwise 0.05;
+/// - a Choice picks the first option named in `high`, otherwise its first
+///   option, with 0.85 on the pick;
+/// - a Score puts 0.85 on level 2 (or the top level) if its id is in `high`,
+///   otherwise on level 0.
 pub struct ScriptedJev {
     pub high: Vec<String>,
 }
 
 impl ScriptedJev {
+    fn wants(&self, name: &str) -> bool {
+        self.high.iter().any(|h| h == name)
+    }
+
     fn answer(&self, id: &str, q: &serde_json::Value) -> serde_json::Value {
         match q["type"].as_str().unwrap() {
             "noul" => {
-                let v = if self.high.iter().any(|h| h == id) {
-                    0.9
-                } else {
-                    0.05
-                };
+                let v = if self.wants(id) { 0.9 } else { 0.05 };
                 serde_json::json!({"type": "noul", "noul": v})
             }
-            "choice" => choice_answer(q),
-            "score" => serde_json::json!({
-                "type": "score", "score": 0.2, "confidence": 0.7,
-                "legend": {"0": "a", "1": "b", "2": "c"},
-                "probabilities": {"0": 0.85, "1": 0.1, "2": 0.05}
-            }),
+            "choice" => self.choice_answer(q),
+            "score" => {
+                let n = q["criteria"].as_array().unwrap().len();
+                let pick = if self.wants(id) { 2.min(n - 1) } else { 0 };
+                spread_score(n, pick)
+            }
             other => panic!("unexpected question type {other}"),
         }
     }
+
+    fn choice_answer(&self, q: &serde_json::Value) -> serde_json::Value {
+        let opts: Vec<String> = q["criteria"].as_object().unwrap().keys().cloned().collect();
+        let pick = opts.iter().position(|o| self.wants(o)).unwrap_or(0);
+        let rest = 0.15 / (opts.len() - 1) as f64;
+        let probs: serde_json::Map<String, serde_json::Value> = opts
+            .iter()
+            .enumerate()
+            .map(|(i, o)| (o.clone(), (if i == pick { 0.85 } else { rest }).into()))
+            .collect();
+        serde_json::json!({"type": "choice", "choice": opts[pick], "probabilities": probs, "confidence": 0.8})
+    }
 }
 
-/// Pick `real_defect` or `high` when offered, else the first option.
-fn choice_answer(q: &serde_json::Value) -> serde_json::Value {
-    let mut opts: Vec<String> = q["criteria"].as_object().unwrap().keys().cloned().collect();
-    if let Some(i) = opts.iter().position(|o| o == "real_defect" || o == "high") {
-        opts.swap(0, i);
-    }
-    let rest = 0.15 / (opts.len() - 1) as f64;
-    let probs: serde_json::Map<String, serde_json::Value> = opts
-        .iter()
-        .enumerate()
-        .map(|(i, o)| (o.clone(), (if i == 0 { 0.85 } else { rest }).into()))
+/// A Score answer over `n` levels with 0.85 on `pick`.
+fn spread_score(n: usize, pick: usize) -> serde_json::Value {
+    let rest = 0.15 / (n - 1) as f64;
+    let probs: serde_json::Map<String, serde_json::Value> = (0..n)
+        .map(|i| (i.to_string(), (if i == pick { 0.85 } else { rest }).into()))
         .collect();
-    serde_json::json!({"type": "choice", "choice": opts[0], "probabilities": probs, "confidence": 0.8})
+    let score: f64 = (0..n)
+        .map(|i| i as f64 * if i == pick { 0.85 } else { rest })
+        .sum();
+    serde_json::json!({"type": "score", "score": score, "confidence": 0.7, "probabilities": probs})
 }
 
 impl Respond for ScriptedJev {
