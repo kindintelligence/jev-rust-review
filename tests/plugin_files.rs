@@ -72,3 +72,34 @@ fn verification_verdicts_are_documented() {
         );
     }
 }
+
+/// MCP clients other than Claude Code (Codex, for example) have only the tool
+/// descriptions to go on, so they must describe the current verdict model.
+#[test]
+fn tool_descriptions_describe_the_current_model() {
+    let src = read("src/mcp.rs");
+    let verify = src
+        .split("async fn verify_rust_findings")
+        .next()
+        .and_then(|before| before.rsplit("description = \"").next())
+        .unwrap();
+    for needed in [
+        "supported / refuted / insufficient_context",
+        "report | insufficient_context | uncertain | dismiss",
+        "severity` score",
+        "real_defect / debatable_tradeoff / style_preference",
+    ] {
+        assert!(
+            verify.contains(needed),
+            "verify description lacks {needed:?}"
+        );
+    }
+    assert!(
+        !verify.contains("not_supported"),
+        "verify description mentions not_supported"
+    );
+    assert!(
+        src.contains("whether the diff touches tests"),
+        "evaluate description lacks test facts"
+    );
+}

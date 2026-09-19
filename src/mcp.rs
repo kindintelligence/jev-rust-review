@@ -146,7 +146,7 @@ fn tool_error(e: impl std::fmt::Display) -> CallToolResult {
 #[tool_router]
 impl Server {
     #[tool(
-        description = "Triage Rust changes with TypeSafe Jev. Collects the diff for a scope itself, splits it into small units (changed lines plus enclosing items), asks typed yes/no and rating questions per review dimension, and returns per-unit answers, probabilities, thresholds, `flagged` (unit, dimension) pairs sorted by signal, project facts (edition, MSRV, runtime, framework profiles), deterministic Cargo facts, redaction counts, token usage and cost. status is ok | partial | jev_unavailable | dry_run. Flags mark where to look; they are not findings."
+        description = "Triage Rust changes with TypeSafe Jev. Collects the diff for a scope itself, splits it into small units (changed lines plus enclosing items), asks typed yes/no and rating questions per review dimension, and returns per-unit answers, probabilities, thresholds, `flagged` (unit, dimension) pairs sorted by signal, project facts (edition, MSRV, runtime, framework profiles, and whether the diff touches tests), deterministic Cargo facts, redaction counts, token usage and cost. status is ok | partial | jev_unavailable | dry_run. Flags mark where to look; they are not findings."
     )]
     async fn evaluate_rust_changes(
         &self,
@@ -169,7 +169,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Verify candidate Rust review findings with TypeSafe Jev before reporting them. For each finding (dimension, file, start_line, end_line, one-sentence claim naming identifiers rather than line numbers, proposed severity) the server re-reads the code itself and returns: `supported` (Jev probability that the claim is true of the code), Jev's independent severity choice with confidence, a category choice (real_defect / debatable_tradeoff / style_preference / not_supported), and a verdict (report | uncertain | dismiss) from configured thresholds."
+        description = "Verify candidate Rust review findings with TypeSafe Jev before reporting them. For each finding (dimension, file, start_line, end_line, one-sentence claim naming identifiers rather than line numbers, proposed severity) the server re-reads the code itself and returns: `support` (Jev's choice of supported / refuted / insufficient_context, with probabilities), `supported` (the probability of `supported`, which the report bar applies to), Jev's independent `severity` score (level name, p_high_or_above, confidence), a `category` choice (real_defect / debatable_tradeoff / style_preference), and a `verdict`: report | insufficient_context | uncertain | dismiss. insufficient_context means the claim depends on code outside the excerpt; it is not a refutation, so keep such a finding only on strong independent evidence."
     )]
     async fn verify_rust_findings(
         &self,
