@@ -8,6 +8,7 @@ pub mod config;
 pub mod context;
 pub mod diff;
 pub mod error;
+pub mod facts;
 pub mod git;
 pub mod jev;
 pub mod mcp;

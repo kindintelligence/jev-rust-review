@@ -5,11 +5,12 @@ use crate::config::{Config, Profiles, USD_PER_INPUT_TOKEN};
 use crate::context::{self, FileInput, Skip, Unit};
 use crate::diff::{self, FileDiff, FileStatus};
 use crate::error::{Error, Result};
+use crate::facts;
 use crate::git::{self, Git, ResolvedScope};
 use crate::jev::{self, Answer, JevError};
 use crate::questions::{self, Dimension, Primitive, QuestionSpec, UnitKind};
 use crate::redact::{self, Redactions};
-use crate::rust_project::{self, ProjectInfo, Role};
+use crate::rust_project::{self, ProjectInfo, Role, TestFacts};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -130,13 +131,6 @@ pub struct CargoFacts {
     pub deleted_rust_files: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Default)]
-pub struct TestFacts {
-    pub test_code_changed: bool,
-    pub test_units: Vec<String>,
-    pub non_test_units: Vec<String>,
-}
-
 #[derive(Debug, Serialize)]
 pub struct CargoPlan {
     pub enabled: bool,
@@ -167,7 +161,6 @@ pub struct EvaluateOutput {
     pub references: Vec<String>,
     pub units: Vec<UnitResult>,
     pub cargo_facts: CargoFacts,
-    pub tests: TestFacts,
     pub skipped: Vec<Skip>,
     pub redactions: BTreeMap<String, usize>,
     pub usage: UsageOut,
@@ -186,7 +179,6 @@ pub struct Prepared {
     pub redactions: Redactions,
     pub cargo_facts: CargoFacts,
     pub active_profiles: BTreeSet<String>,
-    pub tests: TestFacts,
 }
 
 fn active_profiles_for(
@@ -218,21 +210,6 @@ fn active_profiles_for(
     }
 }
 
-fn gate_matches(q: &QuestionSpec, text: &str) -> bool {
-    use std::sync::LazyLock;
-    static CACHE: LazyLock<std::sync::Mutex<BTreeMap<&'static str, regex::Regex>>> =
-        LazyLock::new(Default::default);
-    q.gate.iter().all(|group| {
-        group.iter().any(|pat| {
-            let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
-            let re = cache
-                .entry(pat)
-                .or_insert_with(|| regex::Regex::new(pat).expect("gates are tested"));
-            re.is_match(text)
-        })
-    })
-}
-
 /// Questions that apply to a unit, core first then profiles.
 pub fn select_questions(unit: &Unit, profiles: &BTreeSet<String>) -> Vec<&'static QuestionSpec> {
     let gate_text = format!("{}\n{}", unit.imports, unit.code);
@@ -242,9 +219,7 @@ pub fn select_questions(unit: &Unit, profiles: &BTreeSet<String>) -> Vec<&'stati
         .filter(|p| profiles.contains(p.name))
         .flat_map(|p| p.questions.iter());
     core.chain(prof)
-        .filter(|q| q.unit == unit.kind)
-        .filter(|q| !q.skip_roles.contains(&unit.role))
-        .filter(|q| gate_matches(q, &gate_text))
+        .filter(|q| q.applies(unit.kind, unit.role, &gate_text))
         .collect()
 }
 
@@ -272,7 +247,7 @@ pub fn unit_state(unit: &Unit, project: &ProjectInfo) -> serde_json::Value {
             s.insert("enclosing_item".into(), h.clone().into());
         }
     }
-    let facts = questions::facts_for(&format!("{}\n{}", unit.imports, unit.code));
+    let facts = facts::facts_for(&format!("{}\n{}", unit.imports, unit.code));
     if !facts.is_empty() {
         s.insert("facts".into(), facts.into());
     }
@@ -303,7 +278,7 @@ pub fn prepare(cfg: &Config, repo: &Path, params: &EvaluateParams) -> Result<Pre
     let root = git.root().to_path_buf();
     let scope = git::parse_scope(params.scope.as_deref(), &root)?;
     let rs = git.resolve(scope)?;
-    let project = ProjectInfo::load(&root);
+    let mut project = ProjectInfo::load(&root);
 
     let (files, whole_file) = collect_files(&git, &rs)?;
     let mut acc = Collected::default();
@@ -317,7 +292,7 @@ pub fn prepare(cfg: &Config, repo: &Path, params: &EvaluateParams) -> Result<Pre
     for f in &files {
         collect_file(&ctx, f, &mut acc)?;
     }
-    let tests = test_facts(&acc.units);
+    project.tests = test_facts(&acc.units);
     let Collected {
         units,
         mut skipped,
@@ -336,7 +311,6 @@ pub fn prepare(cfg: &Config, repo: &Path, params: &EvaluateParams) -> Result<Pre
         redactions,
         cargo_facts,
         active_profiles,
-        tests,
     })
 }
 
@@ -484,7 +458,7 @@ fn test_facts(units: &[Unit]) -> TestFacts {
     for u in units.iter().filter(|u| u.kind == UnitKind::RustCode) {
         let label = format!("{}:{}-{}", u.file, u.lines.0, u.lines.1);
         if u.role == Role::Test {
-            tests.test_code_changed = true;
+            tests.diff_touches_tests = true;
             tests.test_units.push(label);
         } else {
             tests.non_test_units.push(label);
@@ -583,26 +557,6 @@ pub fn judge(cfg: &Config, q: &'static QuestionSpec, a: &Answer) -> Option<Quest
                 mass,
             )
         }
-        (
-            Primitive::Choice { flag, .. },
-            Answer::Choice {
-                choice,
-                probabilities,
-                confidence,
-            },
-        ) => {
-            let mass = probabilities
-                .iter()
-                .filter(|(k, _)| flag.contains(&k.as_str()))
-                .map(|(_, p)| p)
-                .sum();
-            (
-                serde_json::json!(choice),
-                Some(probabilities.clone()),
-                Some(*confidence),
-                mass,
-            )
-        }
         _ => return None,
     };
     Some(QuestionResult {
@@ -656,7 +610,6 @@ pub async fn evaluate(
         references: Vec::new(),
         units: Vec::new(),
         cargo_facts: prepared.cargo_facts,
-        tests: prepared.tests,
         skipped: prepared.skipped,
         redactions: prepared.redactions.by_kind.clone(),
         usage: UsageOut::default(),
@@ -1116,6 +1069,18 @@ pub struct ChoiceOut {
     pub confidence: f64,
 }
 
+/// Jev's severity Score. `level` is the probability-weighted level (0 = low,
+/// 3 = critical); `name` is the nearest level's name.
+#[derive(Debug, Serialize)]
+pub struct SeverityOut {
+    pub name: &'static str,
+    pub level: f64,
+    /// Probability mass on `high` and `critical`.
+    pub p_high_or_above: f64,
+    pub probabilities: BTreeMap<String, f64>,
+    pub confidence: f64,
+}
+
 #[derive(Debug, Serialize)]
 pub struct VerifyResult {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1126,16 +1091,23 @@ pub struct VerifyResult {
     pub status: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Jev's `support` Choice: `supported`, `refuted`, or
+    /// `insufficient_context`, with its distribution.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub support: Option<ChoiceOut>,
+    /// `support.probabilities["supported"]`: the number the report bar
+    /// applies to.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub supported: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub severity: Option<ChoiceOut>,
+    pub severity: Option<SeverityOut>,
     pub proposed_severity: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub severity_agrees: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<ChoiceOut>,
-    /// `report`, `uncertain`, `dismiss`, or `not_verified`.
+    /// `report`, `insufficient_context`, `uncertain`, `dismiss`, or
+    /// `not_verified`.
     pub verdict: &'static str,
     pub report_threshold: f64,
     pub dismiss_below: f64,
@@ -1163,28 +1135,120 @@ pub fn report_threshold(cfg: &Config, dimension: &str) -> f64 {
         .unwrap_or_else(|| d.map(|d| d.default_report_threshold()).unwrap_or(0.70))
 }
 
-/// The precision gate. Pure function of Jev's numbers and the thresholds.
+fn prob(c: &ChoiceOut, key: &str) -> f64 {
+    c.probabilities.get(key).copied().unwrap_or(0.0)
+}
+
+/// The precision gate: a pure function of Jev's answers and the thresholds.
+/// Each rule reads one answer; nothing assumes `support` and `category`
+/// agree with each other.
+///
+/// - `dismiss`: Jev chose `refuted`, or the claim is a style preference, or
+///   `P(supported)` is below the dismiss bar while Jev did not say it lacked
+///   context.
+/// - `report`: `P(supported)` reaches the report bar and the claim is a
+///   defect (or a trade-off Jev still leans towards calling a defect).
+/// - `insufficient_context`: Jev chose `insufficient_context`. This is not a
+///   refutation: cross-file findings land here, and the skill keeps them when
+///   Claude's own confidence is High, saying Jev could not verify them.
+/// - `uncertain`: everything else.
 pub fn verdict(
-    supported: f64,
+    support: &ChoiceOut,
     category: &ChoiceOut,
     report_t: f64,
     dismiss_below: f64,
 ) -> &'static str {
-    let p_real = category
-        .probabilities
-        .get("real_defect")
-        .copied()
-        .unwrap_or(0.0);
+    let p_supported = prob(support, questions::SUPPORTED);
     let cat = category.choice.as_str();
-    if supported < dismiss_below || cat == "not_supported" || cat == "style_preference" {
+    let lacks_context = support.choice == questions::INSUFFICIENT_CONTEXT;
+    if support.choice == questions::REFUTED || cat == "style_preference" {
         "dismiss"
-    } else if supported >= report_t
-        && (cat == "real_defect" || (cat == "debatable_tradeoff" && p_real >= 0.40))
+    } else if p_supported >= report_t
+        && (cat == "real_defect"
+            || (cat == "debatable_tradeoff" && prob(category, "real_defect") >= 0.40))
     {
         "report"
+    } else if lacks_context {
+        "insufficient_context"
+    } else if p_supported < dismiss_below {
+        "dismiss"
     } else {
         "uncertain"
     }
+}
+
+fn severity_out(
+    level: f64,
+    probabilities: BTreeMap<String, f64>,
+    confidence: f64,
+) -> Option<SeverityOut> {
+    let max = questions::SEVERITY_LEVELS.len().checked_sub(1)?;
+    // Probability-weighted levels land between levels; name the nearest.
+    let nearest = level.round().clamp(0.0, max as f64) as usize;
+    let p_high_or_above = probabilities
+        .iter()
+        .filter(|(k, _)| {
+            k.parse::<usize>()
+                .is_ok_and(|i| i >= questions::SEVERITY_HIGH_FROM)
+        })
+        .map(|(_, p)| p)
+        .sum();
+    Some(SeverityOut {
+        name: questions::severity_name(nearest)?,
+        level,
+        p_high_or_above,
+        probabilities,
+        confidence,
+    })
+}
+
+/// Apply one Jev response to a verification result.
+fn apply_verification(
+    res: &mut VerifyResult,
+    resp: &jev::Response,
+) -> std::result::Result<(), String> {
+    let support = match resp.answer(questions::VERIFY_SUPPORT)? {
+        Answer::Choice {
+            choice,
+            probabilities,
+            confidence,
+        } => ChoiceOut {
+            choice,
+            probabilities,
+            confidence,
+        },
+        _ => return Err("support: expected a choice answer".into()),
+    };
+    let severity = match resp.answer(questions::VERIFY_SEVERITY)? {
+        Answer::Score {
+            score,
+            probabilities,
+            confidence,
+            ..
+        } => severity_out(score, probabilities, confidence)
+            .ok_or_else(|| "severity: level out of range".to_string())?,
+        _ => return Err("severity: expected a score answer".into()),
+    };
+    let category = match resp.answer(questions::VERIFY_CATEGORY)? {
+        Answer::Choice {
+            choice,
+            probabilities,
+            confidence,
+        } => ChoiceOut {
+            choice,
+            probabilities,
+            confidence,
+        },
+        _ => return Err("category: expected a choice answer".into()),
+    };
+    res.verdict = verdict(&support, &category, res.report_threshold, res.dismiss_below);
+    res.supported = Some(prob(&support, questions::SUPPORTED));
+    res.severity_agrees = Some(severity.name == res.proposed_severity);
+    res.support = Some(support);
+    res.severity = Some(severity);
+    res.category = Some(category);
+    res.status = "ok";
+    Ok(())
 }
 
 struct VerifyPrepared {
@@ -1290,50 +1354,10 @@ pub async fn verify(
                 out.usage.requests += 1;
                 out.usage.input_tokens += resp.usage.input_tokens;
                 out.model = resp.model.clone();
-                let sup = resp.answer(questions::VERIFY_SUPPORTED);
-                let sev = resp.answer(questions::VERIFY_SEVERITY);
-                let cat = resp.answer(questions::VERIFY_CATEGORY);
-                match (sup, sev, cat) {
-                    (
-                        Ok(Answer::Noul { noul }),
-                        Ok(Answer::Choice {
-                            choice: sc,
-                            probabilities: sp,
-                            confidence: scf,
-                        }),
-                        Ok(Answer::Choice {
-                            choice: cc,
-                            probabilities: cp,
-                            confidence: ccf,
-                        }),
-                    ) => {
-                        let category = ChoiceOut {
-                            choice: cc,
-                            probabilities: cp,
-                            confidence: ccf,
-                        };
-                        res.verdict =
-                            verdict(noul, &category, res.report_threshold, res.dismiss_below);
-                        res.supported = Some(noul);
-                        res.severity_agrees = Some(sc == res.proposed_severity);
-                        res.severity = Some(ChoiceOut {
-                            choice: sc,
-                            probabilities: sp,
-                            confidence: scf,
-                        });
-                        res.category = Some(category);
-                        res.status = "ok";
-                    }
-                    (a, b, c) => {
-                        let msg = [a.err(), b.err(), c.err()]
-                            .into_iter()
-                            .flatten()
-                            .next()
-                            .unwrap_or_else(|| "unexpected answer types".into());
-                        res.status = "error";
-                        res.error = Some(msg.clone());
-                        errors.push(msg);
-                    }
+                if let Err(msg) = apply_verification(res, &resp) {
+                    res.status = "error";
+                    res.error = Some(msg.clone());
+                    errors.push(msg);
                 }
             }
             Err(e) => {
@@ -1384,6 +1408,7 @@ fn prepare_verify(
             dimension: f.dimension.clone(),
             status: "not_sent",
             error: None,
+            support: None,
             supported: None,
             severity: None,
             proposed_severity: f.severity.to_ascii_lowercase(),
@@ -1472,7 +1497,7 @@ fn build_verify_request(
         code.push('\n');
     }
     let code = redact::redact_text(&code, redactions);
-    let facts = questions::facts_for(&format!("{}\n{code}", imports_of(&content)));
+    let facts = facts::facts_for(&format!("{}\n{code}", imports_of(&content)));
     let mut s = serde_json::Map::new();
     s.insert("notes".into(), VERIFY_NOTES.into());
     s.insert("file".into(), file.clone().into());
@@ -1532,39 +1557,71 @@ fn imports_of(src: &str) -> String {
 mod tests {
     use super::*;
 
-    fn cat(choice: &str, real: f64) -> ChoiceOut {
-        let mut p = BTreeMap::new();
-        p.insert("real_defect".into(), real);
+    fn choice(choice: &str, probs: &[(&str, f64)]) -> ChoiceOut {
         ChoiceOut {
             choice: choice.into(),
-            probabilities: p,
+            probabilities: probs.iter().map(|(k, v)| ((*k).to_string(), *v)).collect(),
             confidence: 0.5,
         }
     }
 
+    fn support(choice_name: &str, supported: f64) -> ChoiceOut {
+        choice(choice_name, &[("supported", supported)])
+    }
+
+    fn cat(choice_name: &str, real: f64) -> ChoiceOut {
+        choice(choice_name, &[("real_defect", real)])
+    }
+
     #[test]
     fn verdict_rules() {
-        assert_eq!(verdict(0.9, &cat("real_defect", 0.8), 0.7, 0.4), "report");
+        let v = |s: &ChoiceOut, c: &ChoiceOut| verdict(s, c, 0.7, 0.4);
+        let real = cat("real_defect", 0.8);
+        assert_eq!(v(&support("supported", 0.9), &real), "report");
+        assert_eq!(v(&support("supported", 0.65), &real), "uncertain");
+        assert_eq!(v(&support("supported", 0.35), &real), "dismiss");
+        assert_eq!(v(&support("refuted", 0.2), &real), "dismiss");
         assert_eq!(
-            verdict(0.65, &cat("real_defect", 0.8), 0.7, 0.4),
-            "uncertain"
-        );
-        assert_eq!(verdict(0.35, &cat("real_defect", 0.8), 0.7, 0.4), "dismiss");
-        assert_eq!(
-            verdict(0.95, &cat("style_preference", 0.1), 0.7, 0.4),
+            v(&support("supported", 0.95), &cat("style_preference", 0.1)),
             "dismiss"
         );
         assert_eq!(
-            verdict(0.95, &cat("not_supported", 0.1), 0.7, 0.4),
-            "dismiss"
-        );
-        assert_eq!(
-            verdict(0.9, &cat("debatable_tradeoff", 0.45), 0.7, 0.4),
+            v(&support("supported", 0.9), &cat("debatable_tradeoff", 0.45)),
             "report"
         );
         assert_eq!(
-            verdict(0.9, &cat("debatable_tradeoff", 0.2), 0.7, 0.4),
+            v(&support("supported", 0.9), &cat("debatable_tradeoff", 0.2)),
             "uncertain"
+        );
+    }
+
+    #[test]
+    fn insufficient_context_is_not_a_refutation() {
+        // Low P(supported) because Jev lacked context: kept, not dismissed.
+        let lacking = support("insufficient_context", 0.1);
+        assert_eq!(
+            verdict(&lacking, &cat("real_defect", 0.7), 0.7, 0.4),
+            "insufficient_context"
+        );
+        // A style claim is still dismissed.
+        assert_eq!(
+            verdict(&lacking, &cat("style_preference", 0.1), 0.7, 0.4),
+            "dismiss"
+        );
+    }
+
+    #[test]
+    fn severity_score_maps_to_names() {
+        let probs: BTreeMap<String, f64> = [("0", 0.1), ("1", 0.2), ("2", 0.5), ("3", 0.2)]
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), *v))
+            .collect();
+        let s = severity_out(1.8, probs, 0.6).expect("in range");
+        assert_eq!(s.name, "high");
+        assert!((s.p_high_or_above - 0.7).abs() < 1e-9);
+        assert_eq!(
+            severity_out(9.0, BTreeMap::new(), 0.5).map(|s| s.name),
+            Some("critical")
         );
     }
 

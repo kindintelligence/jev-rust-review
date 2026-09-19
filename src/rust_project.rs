@@ -52,6 +52,20 @@ pub struct ProjectInfo {
     pub policy_files: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub toolchain: Option<String>,
+    /// Facts about the diff under review, filled in by the pipeline.
+    pub tests: TestFacts,
+}
+
+/// Whether the diff under review touches test code. This is a fact about the
+/// diff, computed from file roles and `#[cfg(test)]`/`#[test]` spans, not a
+/// question for Jev.
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct TestFacts {
+    pub diff_touches_tests: bool,
+    /// `file:start-end` of changed units that are test code.
+    pub test_units: Vec<String>,
+    /// `file:start-end` of changed units that are not test code.
+    pub non_test_units: Vec<String>,
 }
 
 const POLICY_FILES: &[&str] = &[
@@ -166,7 +180,10 @@ impl ProjectInfo {
         (
             vec![
                 format!("cargo check{ws} --all-targets --message-format short"),
-                format!("cargo clippy{ws} --all-targets --message-format short"),
+                // Undocumented `unsafe` is Clippy's job, not a Jev question.
+                format!(
+                    "cargo clippy{ws} --all-targets --message-format short -- -W clippy::undocumented_unsafe_blocks -W clippy::missing_safety_doc"
+                ),
                 format!("cargo test{ws} --no-fail-fast"),
             ],
             note,

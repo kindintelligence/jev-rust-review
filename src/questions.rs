@@ -3,79 +3,75 @@
 //!
 //! Design rules, from the Jev 1.13 jaggedness page:
 //! - literal, single-hop instructions that name the state field (`code`);
+//! - one defect per question: fan-out is cheap, and a specific id gives the
+//!   reviewer a specific place to look;
 //! - Noul criteria mirror the instruction (`true` = the defect is present);
-//! - no counting, arithmetic, line numbers, or "does it compile";
+//! - no counting, arithmetic, line numbers, or anything a tool can answer
+//!   (clippy's `undocumented_unsafe_blocks` and `missing_safety_doc` own
+//!   "is this `unsafe` documented", so there is no question for it);
 //! - lexical gates in code decide which questions apply to a unit;
 //! - every flag rule reads exactly one answer (no consistency assumptions).
+//!
+//! Gate contract: gates run on the unit text as it is sent to Jev, including
+//! the diff marker in the first column (`+` added, `-` removed, space for
+//! context; see `context::render`). Verification excerpts prepend a claim
+//! column (`>` or space) to that marker; question gates never see them, but
+//! the fact gates in `facts.rs` do, so both follow the same rule. Every
+//! pattern is written so that a marker alone can never open a gate, and the
+//! `gates_stay_closed_on_plain_code` and `diff_markers_alone_open_nothing`
+//! tests enforce that.
 
 use crate::rust_project::Role;
+use regex::RegexSet;
 use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::LazyLock;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Dimension {
-    Correctness,
-    Ownership,
-    TypeDesign,
-    ErrorHandling,
-    Async,
-    Concurrency,
-    Unsafe,
-    Ffi,
-    Performance,
-    Idiom,
-    Api,
-    Macros,
-    Serde,
-    Security,
-    Testing,
-    Cargo,
+/// Defines the enum, `ALL`, `name()` and the serde names from one list, so
+/// they cannot drift apart when a dimension is added.
+macro_rules! dimensions {
+    ($($variant:ident => $name:literal),+ $(,)?) => {
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+        pub enum Dimension {
+            $(#[serde(rename = $name)] $variant,)+
+        }
+
+        impl Dimension {
+            pub const ALL: &'static [Dimension] = &[$(Dimension::$variant,)+];
+
+            pub fn name(self) -> &'static str {
+                match self {
+                    $(Dimension::$variant => $name,)+
+                }
+            }
+        }
+    };
+}
+
+dimensions! {
+    Correctness => "correctness",
+    Ownership => "ownership",
+    TypeDesign => "type_design",
+    ErrorHandling => "error_handling",
+    Async => "async",
+    Concurrency => "concurrency",
+    Unsafe => "unsafe",
+    Ffi => "ffi",
+    Performance => "performance",
+    Idiom => "idiom",
+    Api => "api",
+    Macros => "macros",
+    Serde => "serde",
+    Security => "security",
+    Testing => "testing",
+    Cargo => "cargo",
 }
 
 impl Dimension {
-    pub const ALL: [Dimension; 16] = [
-        Dimension::Correctness,
-        Dimension::Ownership,
-        Dimension::TypeDesign,
-        Dimension::ErrorHandling,
-        Dimension::Async,
-        Dimension::Concurrency,
-        Dimension::Unsafe,
-        Dimension::Ffi,
-        Dimension::Performance,
-        Dimension::Idiom,
-        Dimension::Api,
-        Dimension::Macros,
-        Dimension::Serde,
-        Dimension::Security,
-        Dimension::Testing,
-        Dimension::Cargo,
-    ];
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Dimension::Correctness => "correctness",
-            Dimension::Ownership => "ownership",
-            Dimension::TypeDesign => "type_design",
-            Dimension::ErrorHandling => "error_handling",
-            Dimension::Async => "async",
-            Dimension::Concurrency => "concurrency",
-            Dimension::Unsafe => "unsafe",
-            Dimension::Ffi => "ffi",
-            Dimension::Performance => "performance",
-            Dimension::Idiom => "idiom",
-            Dimension::Api => "api",
-            Dimension::Macros => "macros",
-            Dimension::Serde => "serde",
-            Dimension::Security => "security",
-            Dimension::Testing => "testing",
-            Dimension::Cargo => "cargo",
-        }
-    }
-
+    /// Accepts the canonical name plus the aliases people actually type.
     pub fn parse(s: &str) -> Option<Dimension> {
-        let s = s.trim().to_ascii_lowercase().replace('-', "_");
-        let s = match s.as_str() {
+        let normalised = s.trim().to_ascii_lowercase().replace('-', "_");
+        let canonical = match normalised.as_str() {
             "errors" | "error" | "panic" => "error_handling",
             "types" | "type" => "type_design",
             "borrowing" => "ownership",
@@ -87,12 +83,15 @@ impl Dimension {
             "soundness" => "unsafe",
             "send_sync" => "concurrency",
             other => other,
-        }
-        .to_string();
-        Dimension::ALL.into_iter().find(|d| d.name() == s)
+        };
+        Dimension::ALL
+            .iter()
+            .copied()
+            .find(|d| d.name() == canonical)
     }
 
-    /// Triage bar: low where a miss is expensive (recall-oriented).
+    /// Triage bar on a question's own answer: low where a miss is expensive
+    /// (recall-oriented).
     pub fn default_triage_threshold(self) -> f64 {
         match self {
             Dimension::Unsafe | Dimension::Async | Dimension::Security | Dimension::Concurrency => {
@@ -108,12 +107,13 @@ impl Dimension {
         }
     }
 
-    /// Report bar after verification: high, because a false positive
-    /// reaching the user is the expensive error (precision-oriented).
+    /// Report bar on the verification answer (`P(supported)`): high, because
+    /// a false positive reaching the user is the expensive error
+    /// (precision-oriented). This is a bar on a different question from the
+    /// triage bar, so the two numbers are not comparable with each other.
     pub fn default_report_threshold(self) -> f64 {
         match self {
-            Dimension::Unsafe => 0.80,
-            Dimension::Idiom | Dimension::TypeDesign => 0.80,
+            Dimension::Unsafe | Dimension::Idiom | Dimension::TypeDesign => 0.80,
             _ => 0.70,
         }
     }
@@ -121,21 +121,14 @@ impl Dimension {
 
 #[derive(Clone, Copy, Debug)]
 pub enum Primitive {
-    Noul {
-        yes: &'static str,
-        no: &'static str,
-    },
-    /// Flags when the probability mass on levels `bad_from..` reaches the
-    /// threshold.
+    /// Flags when the probability of "yes" reaches the threshold.
+    Noul { yes: &'static str, no: &'static str },
+    /// Levels run from the low end of the scale to the high end, as the API
+    /// requires, and are indexed from 0. Flags when the probability mass on
+    /// levels `bad_from..` reaches the threshold.
     Score {
         levels: &'static [&'static str],
         bad_from: usize,
-    },
-    /// Flags when the probability mass on `flag` options reaches the
-    /// threshold.
-    Choice {
-        options: &'static [(&'static str, &'static str)],
-        flag: &'static [&'static str],
     },
 }
 
@@ -144,7 +137,6 @@ impl Primitive {
         match self {
             Primitive::Noul { .. } => "noul",
             Primitive::Score { .. } => "score",
-            Primitive::Choice { .. } => "choice",
         }
     }
 }
@@ -162,7 +154,8 @@ pub struct QuestionSpec {
     pub instructions: &'static str,
     pub primitive: Primitive,
     /// Groups of regexes. Every group must match somewhere in the unit's
-    /// code for the question to be asked. Empty = always asked.
+    /// text for the question to be asked. Empty = always asked. Use
+    /// [`QuestionSpec::applies`] rather than compiling these yourself.
     pub gate: &'static [&'static [&'static str]],
     pub skip_roles: &'static [Role],
     pub unit: UnitKind,
@@ -189,6 +182,24 @@ impl QuestionSpec {
             threshold: None,
         }
     }
+    const fn score(
+        id: &'static str,
+        dimension: Dimension,
+        instructions: &'static str,
+        levels: &'static [&'static str],
+        bad_from: usize,
+    ) -> QuestionSpec {
+        QuestionSpec {
+            id,
+            dimension,
+            instructions,
+            primitive: Primitive::Score { levels, bad_from },
+            gate: &[],
+            skip_roles: &[],
+            unit: UnitKind::RustCode,
+            threshold: None,
+        }
+    }
     const fn gate(mut self, gate: &'static [&'static [&'static str]]) -> Self {
         self.gate = gate;
         self
@@ -205,19 +216,58 @@ impl QuestionSpec {
         self.unit = UnitKind::Manifest;
         self
     }
+
+    pub fn triage_threshold(&self) -> f64 {
+        self.threshold
+            .unwrap_or_else(|| self.dimension.default_triage_threshold())
+    }
+
+    /// Whether this question should be asked about a unit. Gates are compiled
+    /// once for the whole process, not once per unit.
+    pub fn applies(&self, unit: UnitKind, role: Role, text: &str) -> bool {
+        self.unit == unit && !self.skip_roles.contains(&role) && self.gate_open(text)
+    }
+
+    pub fn gate_open(&self, text: &str) -> bool {
+        GATES
+            .get(self.id)
+            .is_none_or(|groups| groups.iter().all(|set| set.is_match(text)))
+    }
 }
 
-/// A framework profile is data: detection crates, extra questions, and the
-/// reference file the reviewer loads when the profile is active.
+static GATES: LazyLock<HashMap<&'static str, Vec<RegexSet>>> = LazyLock::new(|| {
+    all_specs()
+        .map(|(q, _)| {
+            let groups = q
+                .gate
+                .iter()
+                .map(|group| {
+                    RegexSet::new(group.iter())
+                        .expect("gate patterns are compiled by the `gates_compile` test")
+                })
+                .collect();
+            (q.id, groups)
+        })
+        .collect()
+});
+
+/// A framework profile is data: detection crates, extra questions, the
+/// reference file the reviewer loads when the profile is active, and the
+/// documentation its embedded facts were checked against.
 #[derive(Debug)]
 pub struct Profile {
     pub name: &'static str,
     pub detect_crates: &'static [&'static str],
     pub questions: &'static [QuestionSpec],
     pub reference: &'static str,
+    /// Instructions below state framework behaviour as fact. A stale fact
+    /// makes Jev flag correct code with confidence, so record the source and
+    /// re-check it when the framework's major version moves.
+    pub verified_against: &'static str,
 }
 
 const NON_PROD: &[Role] = &[Role::Test, Role::Example, Role::Bench];
+const NON_PROD_OR_BUILD: &[Role] = &[Role::Test, Role::Example, Role::Bench, Role::BuildScript];
 const NON_LIB: &[Role] = &[
     Role::Test,
     Role::Example,
@@ -226,6 +276,17 @@ const NON_LIB: &[Role] = &[
     Role::Binary,
 ];
 const TESTS: &[Role] = &[Role::Test];
+
+// Gate fragments shared by several questions.
+/// `a[i]`, `f()[0]`, `m[k][j]`; not `#[attr]`, `vec![..]`, `[u8; 4]`, `&[T]`.
+const INDEXING: &str = r"[\w)\]]\[";
+/// A binary `+ - *` (or the compound-assign form) between two operands. A
+/// diff marker has no operand before it on its line (hence `[ \t]`, not
+/// `\s`, which would reach back across the line break), and `->` has none
+/// after it.
+const ARITHMETIC: &str = r"[\w)\]][ \t]*[-+*]=?[ \t]*[\w(]";
+const LOOP: &str = r"\b(for|while|loop)\b|\.for_each\(|\.map\(|\.filter\(|\.fold\(";
+const LOCK_CALL: &str = r"\.lock\(\)|\.read\(\)|\.write\(\)";
 
 use Dimension as D;
 use QuestionSpec as Q;
@@ -248,7 +309,7 @@ pub static CORE: &[QuestionSpec] = &[
         "Some reachable input makes an index or range exceed the valid bounds, or miss the first or last element.",
         "Every index and range stays within bounds and covers exactly the intended elements.",
     )
-    .gate(&[&[r"\[", r"\.\.", r"len\(\)", r"split_at", r"get_unchecked"]])
+    .gate(&[&[INDEXING, r"split_at|get_unchecked|\.windows\(|\.chunks", r"len\(\)\s*[-+]\s*\d"]])
     .skip(NON_PROD),
     Q::noul(
         "correctness.cast",
@@ -268,17 +329,17 @@ pub static CORE: &[QuestionSpec] = &[
     )
     .gate(&[
         &[r"\b(u8|u16|u32|u64|u128|usize|i8|i16|i32|i64|i128|isize)\b", r"len\(\)"],
-        &[r"[^-]-\s*[\w(]", r"\+", r"\*\s*\w", r"<<"],
+        &[ARITHMETIC, r"\w\s*<<\s*\w"],
     ])
     .skip(NON_PROD),
     Q::noul(
         "correctness.wildcard",
         D::Correctness,
-        "Does a changed `match` in `code` use a wildcard `_` arm on an enum where a variant added later would be handled wrongly by that arm without any compiler error?",
+        "Does a changed `match` in `code` use a wildcard `_` arm on an enum where a variant added later would be handled wrongly by that arm with no warning?",
         "The wildcard arm would silently apply behaviour that is wrong for new variants.",
         "The wildcard arm is correct for any future variant, or the match is not over an enum.",
     )
-    .gate(&[&[r"_\s*=>"]])
+    .gate(&[&[r"\bmatch\b"], &[r"\b_\s*=>"]])
     .skip(NON_PROD)
     .threshold(0.45),
     Q::noul(
@@ -288,7 +349,7 @@ pub static CORE: &[QuestionSpec] = &[
         "A value's drop point differs from what the surrounding code relies on.",
         "Every value lives exactly as long as the code relies on.",
     )
-    .gate(&[&[r"let\s+_\s*=", r"\bdrop\(", r"impl\s+Drop", r"_guard", r"mem::forget", r"lock\(\)"]])
+    .gate(&[&[r"let\s+_\s*=", r"\bdrop\(", r"impl\s+Drop", r"_guard", r"mem::forget", r"\.lock\(\)"]])
     .skip(NON_PROD),
     // ---- ownership ---------------------------------------------------
     Q::noul(
@@ -296,9 +357,9 @@ pub static CORE: &[QuestionSpec] = &[
         D::Ownership,
         "Do the changed lines in `code` copy data that could have been borrowed instead, where the copy is large or runs inside a loop?",
         "An avoidable copy of a large value, or a copy repeated inside a loop.",
-        "No avoidable copy, or the copy is cheap: an `Arc` or `Rc` clone, a small value, or data moved into a spawned task or thread.",
+        "Every copy is needed, or it is cheap: an `Arc` or `Rc` clone, a small value, or data moved into a spawned task or thread.",
     )
-    .gate(&[&[r"\.clone\(\)", r"\.to_owned\(\)", r"\.to_vec\(\)", r"\.to_string\(\)", r"String::from", r"\.collect"]])
+    .gate(&[&[r"\.clone\(\)", r"\.to_owned\(\)", r"\.to_vec\(\)", r"\.to_string\(\)", r"String::from", r"\.cloned\(\)"]])
     .skip(NON_PROD),
     Q::noul(
         "ownership.signature",
@@ -308,19 +369,22 @@ pub static CORE: &[QuestionSpec] = &[
         "The function stores, moves, or mutates the owned argument, or it takes a borrowed type already.",
     )
     .gate(&[&[r"fn\s+\w+[^{;]*:\s*(String|Vec<|PathBuf|Box<)"]])
-    .skip(NON_PROD)
-    // Tuned 2026-09-19 against the eval corpus: consumed Vec args scored 0.60.
-    .threshold(0.65),
+    .skip(NON_PROD),
     // ---- type design -------------------------------------------------
+    // Asked wherever types are defined, in applications as well as libraries.
     Q::noul(
         "type_design.loose_types",
         D::TypeDesign,
-        "Does the changed code in `code` represent a fixed set of states or modes with booleans, strings, integers, or sentinel values where an enum or a dedicated type would prevent invalid values?",
+        "Does a changed struct, enum, or function signature in `code` represent a fixed set of states or modes with booleans, strings, integers, or sentinel values where an enum or a dedicated type would prevent invalid values?",
         "Invalid combinations or values are representable and a simple enum or newtype would rule them out.",
         "The representation is appropriate, or a dedicated type would add more complexity than it removes.",
     )
-    .gate(&[&[r"\bbool\b", r"String", r"&str", r"-1\b", r"Option<", r"\bu8\b|\bi32\b|\bu32\b"]])
-    .skip(NON_LIB),
+    .gate(&[&[
+        r"\bstruct\s+\w+",
+        r"fn\s+\w+[^{;]*:\s*(bool|&str|String|u8|i32|u32)\b",
+        r"==\s*-1\b",
+    ]])
+    .skip(NON_PROD_OR_BUILD),
     // ---- error handling ------------------------------------------------
     Q::noul(
         "error_handling.swallowed",
@@ -329,16 +393,16 @@ pub static CORE: &[QuestionSpec] = &[
         "A failure is silently ignored and the program continues as if the operation succeeded.",
         "Every error is handled, returned, logged, or deliberately ignored where ignoring it is correct.",
     )
-    .gate(&[&[r"let\s+_\s*=", r"\.ok\(\)", r"unwrap_or_default", r"unwrap_or\(", r"Err\(_\)", r"if\s+let\s+Ok", r"\.is_ok\(\)", r"_\s*=>"]])
+    .gate(&[&[r"let\s+_\s*=", r"\.ok\(\)", r"unwrap_or_default", r"unwrap_or\(", r"Err\(_\)", r"if\s+let\s+Ok", r"\.is_ok\(\)"]])
     .skip(TESTS),
     Q::noul(
         "error_handling.panic",
         D::ErrorHandling,
         "Can the changed lines in `code` panic on input or state that the program does not control, for example through `unwrap`, `expect`, indexing, `panic!`, or `unreachable!`?",
         "A panic is reachable from external input, I/O results, or other state the program does not control.",
-        "No reachable panic, or the panic enforces an invariant that the surrounding code has already checked or documented.",
+        "Every possible panic enforces an invariant that the surrounding code has already checked or documented.",
     )
-    .gate(&[&[r"unwrap\(", r"expect\(", r"panic!", r"unreachable!", r"todo!", r"unimplemented!", r"\[[^\]]+\]"]])
+    .gate(&[&[r"\.unwrap\(\)", r"\.expect\(", r"panic!", r"unreachable!", r"todo!", r"unimplemented!", INDEXING]])
     .skip(NON_PROD),
     Q::noul(
         "error_handling.lossy",
@@ -347,7 +411,7 @@ pub static CORE: &[QuestionSpec] = &[
         "The original error's information is discarded, so the caller cannot tell what actually failed.",
         "The original error is kept, wrapped, or chained, or it carries no useful information.",
     )
-    .gate(&[&[r"map_err", r"\?", r"Box<dyn", r"anyhow!", r"Error", r"ok_or"]])
+    .gate(&[&[r"map_err", r"\.ok_or", r"Box<dyn\s+(std::error::)?Error", r"anyhow!|bail!", r"impl\s+From<", r#"Err\(\s*(format!|String::|")"#]])
     .skip(TESTS),
     Q::noul(
         "error_handling.drop_panic",
@@ -365,15 +429,16 @@ pub static CORE: &[QuestionSpec] = &[
         "A synchronous lock or borrow guard is held while the function awaits.",
         "Every such guard is dropped before any `.await`, or the lock is an async lock such as `tokio::sync::Mutex`.",
     )
-    .gate(&[&[r"\.await"], &[r"lock\(\)", r"\.read\(\)", r"\.write\(\)", r"borrow", r"Mutex", r"RwLock"]]),
+    .gate(&[&[r"\.await"], &[LOCK_CALL, r"\.borrow(_mut)?\(\)", r"Mutex", r"RwLock"]])
+    .skip(TESTS),
     Q::noul(
         "async.blocking_call",
         D::Async,
-        "Does an `async` function or block in `code` call an operation that blocks the thread, such as `std::thread::sleep`, `std::fs` or `std::net` I/O, a blocking HTTP client, or a long CPU-bound loop, directly instead of through `spawn_blocking`?",
+        "Does an `async` function or block in `code` call an operation that blocks the thread, such as `std::thread::sleep`, `std::fs` or `std::net` I/O, or a blocking HTTP client, directly instead of through `spawn_blocking`?",
         "Blocking work runs directly on the async executor thread.",
         "All blocking work is offloaded, or the operation is non-blocking or trivially short.",
     )
-    .gate(&[&[r"\basync\b"], &[r"thread::sleep", r"std::fs", r"fs::", r"File::", r"std::net", r"blocking", r"read_to_string", r"\.join\(\)", r"Command::new", r"stdin", r"\bfor\b", r"\bloop\b", r"\bwhile\b", r"sync_channel", r"\.recv\(\)"]]),
+    .gate(&[&[r"\basync\b"], &[r"thread::sleep", r"std::fs|\bfs::", r"File::", r"std::net", r"blocking", r"read_to_string", r"\.join\(\)", r"Command::new", r"stdin", r"sync_channel", r"\.recv\(\)"]]),
     Q::noul(
         "async.select_cancellation",
         D::Async,
@@ -407,9 +472,9 @@ pub static CORE: &[QuestionSpec] = &[
         "Independent awaits run strictly in sequence and could run concurrently.",
         "The awaits depend on each other, must be ordered, or are few enough that order does not matter.",
     )
-    .gate(&[&[r"\.await"], &[r"\bfor\b", r"\bwhile\b", r"\bloop\b"]])
+    .gate(&[&[r"\.await"], &[r"\b(for|while|loop)\b"]])
     .skip(NON_PROD)
-    .threshold(0.65),
+    .threshold(0.55),
     // ---- concurrency -----------------------------------------------------
     Q::noul(
         "concurrency.check_then_act",
@@ -419,8 +484,8 @@ pub static CORE: &[QuestionSpec] = &[
         "The check and the action happen under one lock or one atomic operation, or the state is not shared.",
     )
     .gate(&[
-        &[r"lock\(\)", r"\.read\(\)", r"\.write\(\)", r"\.load\(", r"contains", r"\.get\(", r"exists", r"is_some", r"is_none"],
-        &[r"Mutex", r"RwLock", r"Atomic", r"DashMap", r"Arc<", r"\bstatic\b", r"lock\(\)", r"fs::", r"Path"],
+        &[LOCK_CALL, r"\.load\(", r"contains", r"\.get\(", r"exists", r"is_some", r"is_none"],
+        &[r"Mutex", r"RwLock", r"Atomic", r"DashMap", r"Arc<", r"\bstatic\b", r"\bfs::", r"\bPath"],
     ]),
     Q::noul(
         "concurrency.atomics",
@@ -429,7 +494,7 @@ pub static CORE: &[QuestionSpec] = &[
         "An atomic ordering is too weak for how the value is used, or a compound update is not atomic.",
         "Orderings match how the values are used and every compound update is a single atomic operation.",
     )
-    .gate(&[&[r"Atomic", r"Ordering::"]]),
+    .gate(&[&[r"Atomic[A-Z]\w+", r"Ordering::(Relaxed|SeqCst|Acquire|Release|AcqRel)"]]),
     Q::noul(
         "concurrency.unsafe_send_sync",
         D::Concurrency,
@@ -445,106 +510,151 @@ pub static CORE: &[QuestionSpec] = &[
         "A lock is held across slow work or another lock acquisition that does not need it.",
         "Critical sections are short and only cover the data they protect.",
     )
-    .gate(&[&[r"lock\(\)", r"\.read\(\)", r"\.write\(\)"], &[r"Mutex", r"RwLock"]]),
+    .gate(&[&[LOCK_CALL], &[r"Mutex", r"RwLock"]]),
     // ---- unsafe ------------------------------------------------------------
+    // Three narrow questions instead of one that lists five kinds of UB.
     Q::noul(
-        "unsafe.undefined_behaviour",
+        "unsafe.memory_access",
         D::Unsafe,
-        "Can some input or call sequence make the changed `unsafe` code in `code` cause undefined behaviour, such as reading out of bounds, using a dangling pointer, creating two mutable references to the same data, reading uninitialised memory, or a `transmute` between incompatible types?",
-        "A concrete input or call sequence breaks a safety requirement of an `unsafe` operation.",
-        "Every safety requirement is upheld for all inputs, for example because the code checks bounds or lengths before the `unsafe` operation.",
+        "Can some input or call sequence make the changed `unsafe` code in `code` read or write memory it must not touch: out of bounds, through a dangling or null pointer, or before the memory is initialised?",
+        "A concrete input or call sequence makes an `unsafe` operation access invalid or uninitialised memory.",
+        "Every `unsafe` memory access is valid for all inputs, for example because the code checks bounds or lengths first.",
     )
     .gate(&[&[r"\bunsafe\b"]]),
     Q::noul(
-        "unsafe.missing_safety_comment",
+        "unsafe.aliasing",
         D::Unsafe,
-        "Is a changed `unsafe` block or `unsafe fn` in `code` missing a comment, such as `// SAFETY:` or a `# Safety` doc section, that explains why it is sound?",
-        "At least one changed `unsafe` block or function has no safety explanation.",
-        "Every changed `unsafe` block or function has a safety explanation.",
+        "Can the changed `unsafe` code in `code` create two live mutable references to the same data, or a mutable reference while a shared reference to the same data is still in use?",
+        "Two references that Rust forbids from coexisting can be alive at the same time.",
+        "References created in the `unsafe` code never alias in a forbidden way.",
     )
-    .gate(&[&[r"\bunsafe\b"]])
-    .threshold(0.5),
+    .gate(&[&[r"\bunsafe\b"], &[r"&mut\b", r"\*mut\b", r"as_mut", r"from_raw", r"UnsafeCell", r"get_unchecked_mut"]]),
+    Q::noul(
+        "unsafe.transmute",
+        D::Unsafe,
+        "Does a changed `transmute` or pointer cast in `code` convert between types whose size, alignment, layout, or valid values differ?",
+        "The source and target types are not layout compatible, or the source can hold a value that is invalid for the target.",
+        "The two types have the same size, alignment, and layout, and every source value is valid for the target.",
+    )
+    .gate(&[&[r"transmute", r"\bas\s+\*(const|mut)\b", r"\.cast::<", r"from_raw_parts"]]),
     // ---- ffi ----------------------------------------------------------------
     Q::noul(
-        "ffi.boundary",
+        "ffi.ownership",
         D::Ffi,
-        "Does the changed FFI code in `code` mishandle the `extern` boundary, for example by freeing memory with the wrong allocator, passing a string without a NUL terminator, not checking a pointer for null, or letting a panic unwind out of an `extern \"C\"` function?",
-        "Ownership, nullability, string termination, or unwinding is handled wrongly at the boundary.",
-        "The boundary handles ownership, null pointers, strings, and panics correctly.",
+        "Does the changed FFI code in `code` free memory with a different allocator from the one that allocated it, free it twice, or leave it unclear which side of the `extern` boundary must free it?",
+        "Memory crossing the boundary is freed by the wrong side, freed twice, or never freed.",
+        "Each allocation crossing the boundary is freed exactly once by the side that allocated it.",
     )
-    .gate(&[&[r#"extern\s+"C""#, r"no_mangle", r"repr\(C\)", r"CString", r"CStr", r"\*mut\s", r"\*const\s", r"c_char", r"c_void"]]),
+    .gate(&[&[r"into_raw|from_raw", r"\bfree\(", r"Box::leak", r"mem::forget", r"CString"], &[r#"extern\s+"C""#, r"no_mangle", r"c_char", r"c_void", r"\*(mut|const)\s"]]),
+    Q::noul(
+        "ffi.pointers_and_strings",
+        D::Ffi,
+        "Does the changed FFI code in `code` dereference a pointer received from foreign code before checking it for null, or pass or read a string that lacks a NUL terminator or may contain invalid UTF-8?",
+        "A foreign pointer is used before a null check, or a string crosses the boundary with the wrong termination or encoding.",
+        "Foreign pointers are checked for null before use and strings are converted with `CStr` or `CString` correctly.",
+    )
+    .gate(&[&[r"c_char", r"CStr", r"CString", r"\*(mut|const)\s", r"c_void"], &[r#"extern\s+"C""#, r"no_mangle", r"\bunsafe\b"]]),
+    Q::noul(
+        "ffi.unwind",
+        D::Ffi,
+        "Can a panic unwind out of a changed `extern \"C\"` function in `code`, for example from `unwrap`, indexing, or an allocation, with nothing such as `catch_unwind` to stop it?",
+        "A panic can cross the `extern \"C\"` boundary.",
+        "The function body cannot panic, or panics are caught before the boundary.",
+    )
+    .gate(&[&[r#"extern\s+"C"\s+fn"#]]),
     // ---- performance -----------------------------------------------------------
     Q::noul(
         "performance.repeated_work",
         D::Performance,
         "Does the changed code in `code` repeat avoidable work inside a loop, such as allocating, cloning, parsing, compiling a regex, or searching a list linearly, in a way that grows costly as the input grows?",
         "Work inside a loop could be hoisted or replaced with a lookup, and the cost grows with input size.",
-        "The loop does no avoidable work, or the input is small and bounded.",
+        "The loop does only necessary work, or the input is small and bounded.",
     )
-    .gate(&[&[r"\bfor\b", r"\bwhile\b", r"\bloop\b", r"\.iter\(", r"\.map\(", r"\.contains\(", r"\.find\(", r"\.position\("]])
-    .skip(&[Role::Test, Role::Example, Role::Bench, Role::BuildScript]),
+    .gate(&[
+        &[LOOP],
+        &[r"\.clone\(\)|\.to_(string|owned|vec)\(\)", r"String::(from|new)|Vec::new|format!", r"Regex::new|\.parse\b|from_str", r"\.contains\(|\.find\(|\.position\(", r"\.collect"],
+    ])
+    .skip(NON_PROD_OR_BUILD),
     // ---- idiom / maintainability ---------------------------------------------
-    QuestionSpec {
-        id: "idiom.clarity",
-        dimension: D::Idiom,
-        instructions: "How clearly do the changed lines in `code` express their intent to an experienced Rust developer?",
-        primitive: Primitive::Score {
-            levels: &[
-                "Clear: the intent is obvious and the code uses the language naturally.",
-                "Mostly clear: some awkwardness, but the intent is still easy to follow.",
-                "Unclear: control flow, naming, or structure hides what the code does.",
-            ],
-            bad_from: 2,
-        },
-        gate: &[],
-        skip_roles: TESTS,
-        unit: UnitKind::RustCode,
-        threshold: None,
-    },
+    // The scale runs the same way as the question: a higher level means
+    // harder to follow.
+    Q::score(
+        "idiom.clarity",
+        D::Idiom,
+        "How hard is it for an experienced Rust developer to follow what the changed lines in `code` do?",
+        &[
+            "Easy: the intent is obvious and the code uses the language naturally.",
+            "Some effort: there is awkwardness, but the intent can still be followed.",
+            "Hard: control flow, naming, or structure hides what the code does.",
+        ],
+        2,
+    )
+    .skip(TESTS),
     // ---- api -------------------------------------------------------------------
     Q::noul(
         "api.breaking_change",
         D::Api,
         "Does the change in `code` remove or alter a public (`pub`) item in a way that breaks existing callers, such as removing or renaming it, changing a function signature, adding trait bounds, adding a required trait method, or changing public fields?",
-        "Code that compiled against the old public item would fail to compile or behave differently.",
-        "No public item is removed or changed incompatibly; only new items are added or private code changed.",
+        "Code written against the old public item would stop building or behave differently.",
+        "Every public item that existed before still exists with a compatible signature; only new items are added or private code changed.",
     )
-    .gate(&[&[r"\bpub\b"]])
+    .gate(&[&[r"\bpub\s+(fn|struct|enum|trait|type|const|static|mod|use|unsafe|async)\b", r"\bpub\s+\w+\s*:"]])
     .skip(NON_LIB),
     // ---- macros ----------------------------------------------------------------
     Q::noul(
-        "macros.hygiene",
+        "macros.double_evaluation",
         D::Macros,
-        "Does a changed macro in `code` evaluate an argument expression more than once, or generate item or variable names that can collide with names at the call site?",
-        "A macro argument is expanded more than once, or generated names can clash with the caller's names.",
-        "Each argument is evaluated once and generated names cannot clash.",
+        "Does a changed macro in `code` expand one of its argument expressions more than once, so that an argument with side effects runs repeatedly?",
+        "A macro argument appears more than once in the expansion.",
+        "Each argument is bound to a local once and the local is reused.",
+    )
+    .gate(&[&[r"macro_rules!"]]),
+    Q::noul(
+        "macros.name_collision",
+        D::Macros,
+        "Does a changed macro in `code` generate items, or in a procedural macro variables, with fixed names that can collide with names at the call site?",
+        "Generated names can clash with names the caller already uses.",
+        "Generated names are hygienic, derived from the input, or unique.",
     )
     .gate(&[&[r"macro_rules!", r"proc_macro", r"quote!"]]),
     // ---- serde -------------------------------------------------------------------
     Q::noul(
         "serde.compatibility",
         D::Serde,
-        "Does the change in `code` alter how a type is serialized or deserialized, such as renaming a field, changing a field's type, adding `#[serde(untagged)]`, or adding `#[serde(default)]`, in a way that breaks previously stored or transmitted data or silently accepts invalid input?",
-        "Existing serialized data no longer round-trips, or invalid input is now accepted silently.",
-        "The serialized format stays compatible and invalid input is still rejected.",
+        "Does the change in `code` alter how a type is serialized, such as renaming a field, changing a field's type, or adding `#[serde(untagged)]`, so that previously stored or transmitted data no longer round-trips?",
+        "Data written by the old version cannot be read by the new one, or the reverse.",
+        "The serialized format stays compatible with data written before the change.",
     )
     .gate(&[&[r"Serialize", r"Deserialize", r"serde\("]]),
+    Q::noul(
+        "serde.silent_default",
+        D::Serde,
+        "Does a changed `#[serde(default)]`, `Option` field, or `#[serde(other)]` in `code` make deserialization accept input that is missing a required value or carries an unknown one, where that input should be rejected?",
+        "Invalid or incomplete input is now accepted and filled with a default.",
+        "Defaults apply only where a missing value is valid.",
+    )
+    .gate(&[&[r"serde\([^)]*(default|other|skip)"]]),
     // ---- security ----------------------------------------------------------------
     Q::noul(
         "security.injection",
         D::Security,
         "Does the changed code in `code` build a file path, shell command, SQL query, or URL from external input without validating or escaping it?",
         "External input reaches a path, command, query, or URL without validation or escaping.",
-        "Inputs are validated or escaped, or they do not come from outside the program.",
+        "Inputs are validated or escaped, or they come from inside the program.",
     )
-    .gate(&[&[r"Command::new", r"\.arg\(", r"query", r"execute", r"(?i)select\s", r"Path", r"\.join\(", r"File::", r"fs::", r"Url", r"format!"]])
+    .gate(&[&[
+        r"Command::new|\.arg\(|\.args\(",
+        r"sqlx::|\.query\(|\.execute\(|(?i)\b(select|insert|update|delete)\b.*\b(from|into|set)\b",
+        r"Path(Buf)?::|\.join\(|File::(open|create)|\bfs::",
+        r#"Url::parse|format!\(\s*"https?:"#,
+    ]])
     .skip(TESTS),
     Q::noul(
         "security.secret_exposure",
         D::Security,
         "Does the changed code in `code` write a secret, such as a password, token, API key, or session cookie, into a log, an error message, or `Debug` output?",
         "A secret value can end up in logs, error messages, or debug output.",
-        "Secrets are never written to logs, errors, or debug output.",
+        "Secrets stay out of logs, errors, and debug output.",
     )
     .gate(&[
         &[r"log::", r"tracing", r"info!", r"debug!", r"warn!", r"error!", r"trace!", r"println!", r"eprintln!", r"format!", r"Debug"],
@@ -552,13 +662,22 @@ pub static CORE: &[QuestionSpec] = &[
     ])
     .skip(TESTS),
     Q::noul(
-        "security.tls_or_randomness",
+        "security.tls_verification",
         D::Security,
-        "Does the changed code in `code` disable TLS certificate or hostname verification, or use a non-cryptographic random number generator to create secrets, tokens, or keys?",
-        "TLS verification is disabled, or security-sensitive values come from a non-cryptographic generator.",
-        "TLS verification stays on and security-sensitive randomness comes from a cryptographic source.",
+        "Does the changed code in `code` disable TLS certificate verification or hostname verification?",
+        "Certificate or hostname verification is turned off.",
+        "TLS verification stays on.",
     )
-    .gate(&[&[r"danger", r"accept_invalid", r"(?i)verify_?none", r"NoVerifier", r"thread_rng", r"rand::", r"random\(", r"SmallRng", r"fastrand"]])
+    .gate(&[&[r"danger", r"accept_invalid", r"(?i)verify_?none", r"(?i)no_?verif", r"set_verify"]])
+    .skip(TESTS),
+    Q::noul(
+        "security.weak_randomness",
+        D::Security,
+        "Does the changed code in `code` create a secret, token, key, nonce, or password with a random number generator that is not cryptographically secure?",
+        "A security-sensitive value comes from a non-cryptographic generator.",
+        "Security-sensitive values come from a cryptographic source, or the random values are not security sensitive.",
+    )
+    .gate(&[&[r"thread_rng|\brand::|random\(|SmallRng|fastrand|StdRng::seed"]])
     .skip(TESTS),
     Q::noul(
         "security.unbounded_input",
@@ -567,8 +686,19 @@ pub static CORE: &[QuestionSpec] = &[
         "Untrusted input is read or parsed with no bound on its size.",
         "Input size is bounded, or the input is trusted.",
     )
-    .gate(&[&[r"from_slice", r"from_str", r"from_reader", r"deserialize", r"read_to_end", r"read_to_string", r"with_capacity", r"bincode"]])
+    .gate(&[&[r"from_slice", r"from_reader", r"read_to_end", r"read_to_string", r"bincode", r"\.bytes\(\)\.await", r"to_bytes\("]])
     .skip(TESTS),
+    // ---- testing -----------------------------------------------------------------
+    // Whether the diff touches tests at all is a fact about the diff and is
+    // computed in code. This asks the one local thing Jev can judge.
+    Q::noul(
+        "testing.weak_assertion",
+        D::Testing,
+        "Does a changed test function in `code` run the code under test without asserting anything about its result, or assert something that is always true?",
+        "A changed test would still pass if the code under test returned a wrong result.",
+        "Every changed test asserts on the behaviour it exercises, or expects a panic or an error explicitly.",
+    )
+    .gate(&[&[r"#\[(\w+::)*test\b", r"#\[rstest", r"proptest!"]]),
     // ---- cargo (manifest units) ------------------------------------------------------
     Q::noul(
         "cargo.manifest_risk",
@@ -578,6 +708,15 @@ pub static CORE: &[QuestionSpec] = &[
         "The manifest change is additive or internal and cannot affect existing users.",
     )
     .manifest(),
+    Q::noul(
+        "cargo.unpinned_source",
+        D::Cargo,
+        "Does this change to `Cargo.toml` in `code` add a dependency from a git repository without a fixed `rev` or `tag`, from a local `path` outside the workspace, or with a `*` version?",
+        "A dependency can change underneath the project without the manifest changing.",
+        "Every added dependency resolves to a fixed, published version or a pinned revision.",
+    )
+    .gate(&[&[r"\bgit\s*=", r"\bpath\s*=", r#"=\s*"\*""#, r#"version\s*=\s*"\*""#]])
+    .manifest(),
 ];
 
 pub static PROFILES: &[Profile] = &[
@@ -585,6 +724,7 @@ pub static PROFILES: &[Profile] = &[
         name: "tokio",
         detect_crates: &["tokio"],
         reference: "references/frameworks/tokio.md",
+        verified_against: "tokio 1.x: docs.rs/tokio (task::block_in_place, task::spawn_blocking, sync::mpsc blocking_send, macro.select cancellation safety)",
         questions: &[
             Q::noul(
                 "tokio.runtime_nesting",
@@ -609,7 +749,7 @@ pub static PROFILES: &[Profile] = &[
                 "A long-running task or loop has no stop signal.",
                 "Every long-running task can be stopped, or the task ends on its own.",
             )
-            .gate(&[&[r"spawn", r"\bloop\b", r"interval"]])
+            .gate(&[&[r"spawn\("], &[r"\b(loop|while)\b", r"interval"]])
             .skip(TESTS),
             Q::noul(
                 "tokio.select_not_cancel_safe",
@@ -630,11 +770,11 @@ pub static PROFILES: &[Profile] = &[
             Q::noul(
                 "tokio.async_mutex_unneeded",
                 D::Performance,
-                "Does the changed code in `code` use `tokio::sync::Mutex` for data that is locked only briefly and never held across an `.await`, where `std::sync::Mutex` would be simpler and faster?",
-                "An async mutex guards data that is never locked across an `.await`.",
+                "Does the changed code in `code` use `tokio::sync::Mutex` for data that is locked only briefly and released before any `.await`, where `std::sync::Mutex` would be simpler and faster?",
+                "An async mutex guards data that is always released before the next `.await`.",
                 "The async mutex is held across `.await`, or a std mutex is already used.",
             )
-            .gate(&[&[r"tokio::sync::(Mutex|RwLock)", r"sync::Mutex", r"Mutex<"]])
+            .gate(&[&[r"tokio::sync::(Mutex|RwLock)", r"\b(Mutex|RwLock)<"]])
             .threshold(0.6),
         ],
     },
@@ -642,6 +782,7 @@ pub static PROFILES: &[Profile] = &[
         name: "axum",
         detect_crates: &["axum"],
         reference: "references/frameworks/axum.md",
+        verified_against: "axum 0.8: docs.rs/axum/latest/axum/middleware/index.html#ordering and extract::Extension",
         questions: &[
             Q::noul(
                 "axum.error_exposure",
@@ -650,7 +791,7 @@ pub static PROFILES: &[Profile] = &[
                 "Internal error details reach the HTTP response, or a failure is reported with a success status.",
                 "Errors map to appropriate status codes with messages safe for clients.",
             )
-            .gate(&[&[r"IntoResponse", r"StatusCode", r"Response", r"Json\("]]),
+            .gate(&[&[r"IntoResponse", r"StatusCode", r"Json\("]]),
             Q::noul(
                 "axum.layer_order",
                 D::Correctness,
@@ -662,7 +803,7 @@ pub static PROFILES: &[Profile] = &[
             Q::noul(
                 "axum.extension_state",
                 D::Correctness,
-                "Does the changed code in `code` use `Extension` to pass application state that may be missing for some routes, which fails at runtime with a 500 error instead of at compile time like `State`?",
+                "Does the changed code in `code` use `Extension` to pass application state that may be missing for some routes, which fails at runtime with a 500 error, whereas a missing `State` is caught at build time?",
                 "`Extension` carries state that some routes may not have.",
                 "State is passed with `State`, or the `Extension` is always present.",
             )
@@ -674,13 +815,14 @@ pub static PROFILES: &[Profile] = &[
                 "The handler blocks the executor thread.",
                 "Blocking work is offloaded or absent.",
             )
-            .gate(&[&[r"async\s+fn"], &[r"std::fs", r"fs::", r"hash", r"bcrypt", r"argon2", r"diesel", r"rusqlite", r"thread::sleep", r"blocking"]]),
+            .gate(&[&[r"async\s+fn"], &[r"std::fs|\bfs::", r"hash", r"bcrypt", r"argon2", r"diesel", r"rusqlite", r"thread::sleep", r"blocking"]]),
         ],
     },
     Profile {
         name: "dioxus",
         detect_crates: &["dioxus"],
         reference: "references/frameworks/dioxus.md",
+        verified_against: "dioxus 0.7: dioxuslabs.com/learn/0.7 (signals, hooks, use_reactive, server functions, use_server_future reactivity)",
         questions: &[
             Q::noul(
                 "dioxus.guard_across_await",
@@ -695,15 +837,15 @@ pub static PROFILES: &[Profile] = &[
                 D::Correctness,
                 "In `code`, can a signal's `.read()` guard still be alive when the same signal is written, for example writing to a signal inside a loop over its own `.read()` value, which panics at runtime with an already-borrowed error?",
                 "A read guard and a write to the same signal overlap.",
-                "Reads and writes of the same signal never overlap.",
+                "Every read guard is released before the same signal is written.",
             )
-            .gate(&[&[r"\.read\(\)", r"\.with\(", r"\.iter\(\)"], &[r"\.write\(\)", r"\.set\(", r"with_mut", r"\+=", r"\.push\("]]),
+            .gate(&[&[r"\.read\(\)", r"\.with\(", r"\.iter\(\)"], &[r"\.write\(\)", r"\.set\(", r"with_mut", r"\w\s*\+=", r"\.push\("]]),
             Q::noul(
                 "dioxus.effect_loop",
                 D::Correctness,
                 "Does a changed `use_effect` or `use_memo` in `code` write to a signal that it also reads without `peek()`, so that it can keep re-running itself?",
                 "The effect or memo writes a signal it subscribes to.",
-                "The effect or memo never writes a signal it subscribes to.",
+                "The effect or memo only writes signals it reads through `peek()` or does not read.",
             )
             .gate(&[&[r"use_effect", r"use_memo"]]),
             Q::noul(
@@ -719,7 +861,7 @@ pub static PROFILES: &[Profile] = &[
                 D::Correctness,
                 "Does a changed closure passed to `use_effect`, `use_memo`, `use_resource`, or `use_future` in `code` use a plain prop or local value (not a signal) that can change between renders, so the closure keeps using a stale value?",
                 "The closure captures a changing non-signal value that is not tracked, for example without `use_reactive`.",
-                "The closure only uses signals or values that never change.",
+                "The closure only uses signals or values that stay the same for the component's lifetime.",
             )
             .gate(&[&[r"use_effect", r"use_memo", r"use_resource", r"use_future"]]),
             Q::noul(
@@ -742,136 +884,111 @@ pub static PROFILES: &[Profile] = &[
     },
 ];
 
-// ---- reference facts ------------------------------------------------------------
-
-/// Short documented facts added to the state when their gate matches the
-/// code. The Models page recommends putting reference material in `state`
-/// rather than expecting the model to recall it. Each fact is taken from
-/// the official documentation (see DESIGN.md) and must stay literal.
-pub static FACTS: &[(&str, &str)] = &[
-    (
-        r"select!",
-        "In `tokio::select!`, the branches that lose the race are dropped (cancelled). `read_exact`, `read_to_end`, `read_to_string`, `write_all`, `Mutex::lock`, `RwLock::read`, `RwLock::write`, `Semaphore::acquire` and `Notify::notified` are not cancellation safe: cancelling them can lose data or queue position. `recv` on channels, `accept`, `read`, `write` and `tokio::time::sleep` are cancellation safe.",
-    ),
-    (
-        r"\.await",
-        "A `std::sync::MutexGuard` or `RwLock` guard is not released by `.await`; it stays locked until it is dropped at the end of its scope or by `drop(guard)`.",
-    ),
-    (
-        r"\bas\s+(u8|u16|u32|i8|i16|i32|usize|isize|u64|i64)\b",
-        "An `as` cast between integer types silently truncates or wraps values that do not fit the target type; `TryFrom` reports the overflow instead.",
-    ),
-    (
-        r"untagged",
-        "With `#[serde(untagged)]`, serde tries the variants in declaration order and uses the first one that deserializes. Unknown fields are ignored by default and `Option` fields may be missing, so a later variant's data can match an earlier variant.",
-    ),
-    (
-        r"get_unchecked|from_raw_parts|transmute|\*mut |\*const ",
-        "`get_unchecked`, `slice::from_raw_parts` and raw pointer dereferences perform no bounds or validity checks; an out-of-range index or invalid pointer is undefined behaviour even if the result is never used.",
-    ),
-    (
-        r"blocking_send|blocking_recv|blocking_lock",
-        "Tokio's `blocking_send`, `blocking_recv` and `blocking_lock` panic when called from inside an async context.",
-    ),
-    (
-        r"block_in_place",
-        "`tokio::task::block_in_place` panics when called on a `current_thread` runtime.",
-    ),
-    (
-        r"\.layer\(",
-        "In Axum, with repeated `Router::layer` calls the layer added last runs first on the request; with `tower::ServiceBuilder`, layers run top to bottom.",
-    ),
-    (
-        r"use_signal|Signal<|\.read\(\)",
-        "In Dioxus 0.7, holding a signal's `.read()` guard while writing the same signal panics with an already-borrowed error, and signal guards must not be held across `.await`.",
-    ),
-];
-
-/// Facts whose gate matches `text`, at most five.
-pub fn facts_for(text: &str) -> Vec<&'static str> {
-    use std::sync::LazyLock;
-    static COMPILED: LazyLock<Vec<(regex::Regex, &'static str)>> = LazyLock::new(|| {
-        FACTS
-            .iter()
-            .map(|(pat, fact)| {
-                (
-                    regex::Regex::new(pat).expect("fact gates are tested"),
-                    *fact,
-                )
-            })
-            .collect()
-    });
-    COMPILED
-        .iter()
-        .filter(|(re, _)| re.is_match(text))
-        .map(|(_, f)| *f)
-        .take(5)
-        .collect()
-}
-
 // ---- verification questions (precision stage) --------------------------------
+//
+// Three answers, each read on its own:
+// - `support`  decides whether a finding is reported (`P(supported)` against
+//   the dimension's report bar) and, separately, whether Jev could judge it
+//   at all. `insufficient_context` is not a refutation: cross-file findings
+//   (lock ordering, semver breaks) land there, and the report should say
+//   "Jev could not verify this from local context" rather than drop them.
+// - `severity` is a Score, because severity is ordered; read the mass on
+//   `SEVERITY_HIGH_FROM..` for "at least high".
+// - `category` separates defects from taste. It has no "not supported"
+//   option on purpose: that would be the complement of `support`, and Jev
+//   does not promise that complementary questions agree.
 
-pub const VERIFY_SUPPORTED: &str = "supported";
+pub const VERIFY_SUPPORT: &str = "support";
 pub const VERIFY_SEVERITY: &str = "severity";
 pub const VERIFY_CATEGORY: &str = "category";
 
-pub const SEVERITY_OPTIONS: &[(&str, &str)] = &[
+pub const SUPPORTED: &str = "supported";
+pub const REFUTED: &str = "refuted";
+pub const INSUFFICIENT_CONTEXT: &str = "insufficient_context";
+
+pub const SUPPORT_OPTIONS: &[(&str, &str)] = &[
     (
-        "critical",
-        "Undefined behaviour, memory unsafety, a deadlock, data loss or corruption, or a security vulnerability reachable in normal use.",
+        SUPPORTED,
+        "The lines marked `>` in `code` contain the defect that `claim` describes.",
     ),
     (
-        "high",
-        "Wrong results, a crash or panic, or a resource leak in a realistic situation.",
+        REFUTED,
+        "`code` shows that the defect is absent, or `claim` misreads what the code does.",
+    ),
+    (
+        INSUFFICIENT_CONTEXT,
+        "Whether `claim` is true depends on code that is outside `code`.",
+    ),
+];
+
+/// `(name, description)`, from the low end of the scale to the high end.
+/// The index is the level Jev reports.
+pub const SEVERITY_LEVELS: &[(&str, &str)] = &[
+    (
+        "low",
+        "A minor issue with little practical impact, such as a small inefficiency.",
     ),
     (
         "medium",
         "A defect that needs unusual conditions, noticeably degrades performance, or makes failures hard to diagnose.",
     ),
     (
-        "low",
-        "A minor issue with little practical impact, such as a missing comment or a small inefficiency.",
+        "high",
+        "Wrong results, a crash or panic, or a resource leak in a realistic situation.",
+    ),
+    (
+        "critical",
+        "Undefined behaviour, memory unsafety, a deadlock, data loss or corruption, or a security vulnerability reachable in normal use.",
     ),
 ];
+pub const SEVERITY_HIGH_FROM: usize = 2;
+
+pub fn severity_name(level: usize) -> Option<&'static str> {
+    SEVERITY_LEVELS.get(level).map(|(name, _)| *name)
+}
 
 pub const CATEGORY_OPTIONS: &[(&str, &str)] = &[
     (
         "real_defect",
-        "The code is wrong: it can misbehave, crash, leak, be unsound, or be insecure as the claim describes.",
+        "The claim describes code that can misbehave, crash, leak, be unsound, or be insecure.",
     ),
     (
         "debatable_tradeoff",
-        "The code works; the claim describes a reasonable design or performance trade-off that people could disagree on.",
+        "The claim describes a reasonable design or performance trade-off that people could disagree on.",
     ),
     (
         "style_preference",
         "The claim is about naming, formatting, or code style rather than behaviour.",
     ),
-    ("not_supported", "The code does not do what the claim says."),
 ];
 
+fn choice_json(instructions: &str, options: &[(&str, &str)]) -> serde_json::Value {
+    let criteria: serde_json::Map<String, serde_json::Value> = options
+        .iter()
+        .map(|(key, description)| ((*key).to_owned(), (*description).into()))
+        .collect();
+    serde_json::json!({"type": "choice", "instructions": instructions, "criteria": criteria})
+}
+
+fn score_json(instructions: &str, levels: &[&str]) -> serde_json::Value {
+    serde_json::json!({"type": "score", "instructions": instructions, "criteria": levels})
+}
+
 pub fn verify_questions() -> serde_json::Value {
-    let choice = |instructions: &str, opts: &[(&str, &str)]| {
-        let mut criteria = serde_json::Map::new();
-        for (k, v) in opts {
-            criteria.insert((*k).into(), serde_json::Value::String((*v).into()));
-        }
-        serde_json::json!({"type": "choice", "instructions": instructions, "criteria": criteria})
-    };
+    let severity_levels: Vec<&str> = SEVERITY_LEVELS.iter().map(|(_, d)| *d).collect();
     serde_json::json!({
-        VERIFY_SUPPORTED: {
-            "type": "noul",
-            "instructions": {
-                "question": "Is the `claim` true of the code in `code`?",
-                "focus": "Judge only whether the defect described in `claim` is actually present in the lines marked `>` and the code they depend on."
-            },
-            "criteria": {
-                "true": "The code contains the defect exactly as `claim` describes it.",
-                "false": "The defect is absent, the claim misreads the code, or `code` does not contain enough to confirm it."
-            }
-        },
-        VERIFY_SEVERITY: choice("If the `claim` is true, how severe is the defect it describes?", SEVERITY_OPTIONS),
-        VERIFY_CATEGORY: choice("Which option best describes the `claim` about `code`?", CATEGORY_OPTIONS),
+        VERIFY_SUPPORT: choice_json(
+            "Does `code` contain the defect that `claim` describes? Judge only the lines marked `>` and the code they depend on.",
+            SUPPORT_OPTIONS,
+        ),
+        VERIFY_SEVERITY: score_json(
+            "Assume `claim` is true. How severe is the defect it describes?",
+            &severity_levels,
+        ),
+        VERIFY_CATEGORY: choice_json(
+            "What kind of problem does `claim` describe?",
+            CATEGORY_OPTIONS,
+        ),
     })
 }
 
@@ -883,18 +1000,7 @@ pub fn to_api(q: &QuestionSpec) -> serde_json::Value {
             "instructions": q.instructions,
             "criteria": {"true": yes, "false": no},
         }),
-        Primitive::Score { levels, .. } => serde_json::json!({
-            "type": "score",
-            "instructions": q.instructions,
-            "criteria": levels,
-        }),
-        Primitive::Choice { options, .. } => {
-            let mut criteria = serde_json::Map::new();
-            for (k, v) in options {
-                criteria.insert((*k).into(), serde_json::Value::String((*v).into()));
-            }
-            serde_json::json!({"type": "choice", "instructions": q.instructions, "criteria": criteria})
-        }
+        Primitive::Score { levels, .. } => score_json(q.instructions, levels),
     }
 }
 
@@ -916,6 +1022,37 @@ mod tests {
     use super::*;
     use std::collections::HashSet;
 
+    /// Ordinary code in unit form: a marker column, an attribute, `?`,
+    /// `String`, `bool`, `->`, a reference, a generic. None of it is a
+    /// reason to ask a gated question.
+    const PLAIN: &str = "\
+ use std::fmt::Write;
+
+-#[derive(Debug)]
++#[derive(Debug, Clone)]
+ struct Greeter {
++    name: String,
++    loud: bool,
+ }
+
+ impl Greeter {
++    fn greet(&self, out: &mut String) -> Result<(), std::fmt::Error> {
++        let items: Vec<&str> = vec![\"a\", \"b\"];
++        let suffix = if self.loud { \"!\" } else { \".\" };
+-        write!(out, \"hi\")?;
++        write!(out, \"hi {}{suffix} {items:?}\", self.name)?;
++        Ok(())
++    }
+ }
+";
+
+    fn open_ids(text: &str) -> HashSet<&'static str> {
+        all_specs()
+            .filter(|(q, _)| !q.gate.is_empty() && q.gate_open(text))
+            .map(|(q, _)| q.id)
+            .collect()
+    }
+
     #[test]
     fn ids_unique_and_prefixed() {
         let mut seen = HashSet::new();
@@ -933,50 +1070,195 @@ mod tests {
     fn gates_compile() {
         for (q, _) in all_specs() {
             for group in q.gate {
-                for pat in *group {
-                    regex::Regex::new(pat).unwrap_or_else(|e| panic!("{}: {e}", q.id));
+                assert!(!group.is_empty(), "{} has an empty gate group", q.id);
+                RegexSet::new(group.iter()).unwrap_or_else(|e| panic!("{}: {e}", q.id));
+            }
+        }
+        // Forces the lazy table, so a bad pattern fails here and not at runtime.
+        assert_eq!(GATES.len(), all_specs().count());
+    }
+
+    #[test]
+    fn gates_stay_closed_on_plain_code() {
+        // A struct definition is a fair reason to ask about type design.
+        let expected: HashSet<&str> = HashSet::from(["type_design.loose_types"]);
+        assert_eq!(open_ids(PLAIN), expected);
+    }
+
+    #[test]
+    fn diff_markers_alone_open_nothing() {
+        // Triage units use `+`, `-` and ` ` in the first column; verification
+        // excerpts add a claim column in front (`>+`, ` -`, `> `).
+        let markers = "+\n-\n+    \n-    \n>\n>+\n -\n> \n+ let total: usize = count;\n";
+        assert_eq!(open_ids(markers), HashSet::new());
+        // A marker at the start of a line is not an operator, even after a
+        // line that ends in an operand.
+        let after_operand = " let n: usize = f(x)\n+    let y = z;\n let w = v\n-    let u = t;\n";
+        assert_eq!(open_ids(after_operand), HashSet::new());
+    }
+
+    #[test]
+    fn gates_open_on_the_code_they_target() {
+        let cases: &[(&str, &str)] = &[
+            ("correctness.bounds", "+    let first = items[0];"),
+            ("correctness.bounds", "+    let last = v[v.len() - 1];"),
+            (
+                "correctness.overflow",
+                "+    let left: usize = total - used;",
+            ),
+            ("correctness.overflow", "+    count += step as u32;"),
+            (
+                "correctness.wildcard",
+                "+    match kind {\n+        _ => Mode::Fast,",
+            ),
+            (
+                "error_handling.panic",
+                "+    let port = args[1].parse::<u16>().unwrap();",
+            ),
+            ("error_handling.lossy", "+    .map_err(|_| AppError::Io)?;"),
+            (
+                "async.guard_across_await",
+                "+    let g = state.lock().unwrap();\n+    fetch().await;",
+            ),
+            (
+                "unsafe.transmute",
+                "+    unsafe { std::mem::transmute::<u32, f32>(bits) }",
+            ),
+            ("ffi.unwind", "+pub extern \"C\" fn run(p: *const u8) {"),
+            (
+                "performance.repeated_work",
+                "+    for l in lines {\n+        let re = Regex::new(p)?;",
+            ),
+            (
+                "security.tls_verification",
+                "+    .danger_accept_invalid_certs(true)",
+            ),
+            (
+                "security.weak_randomness",
+                "+    let token = rand::random::<u64>();",
+            ),
+            (
+                "testing.weak_assertion",
+                "+#[tokio::test]\n+async fn works() {",
+            ),
+            (
+                "cargo.unpinned_source",
+                "+foo = { git = \"https://example.com/foo\" }",
+            ),
+        ];
+        for (id, text) in cases {
+            assert!(open_ids(text).contains(id), "{id} should open on {text:?}");
+        }
+    }
+
+    #[test]
+    fn every_dimension_can_be_flagged() {
+        let covered: HashSet<Dimension> = all_specs().map(|(q, _)| q.dimension).collect();
+        for d in Dimension::ALL {
+            assert!(covered.contains(d), "{} has no question", d.name());
+        }
+    }
+
+    #[test]
+    fn wording_follows_jev_guidance() {
+        const BANNED: &[&str] = &["unless", "how many", "line number", "compile", "not un"];
+        for (q, _) in all_specs() {
+            let i = q.instructions.to_lowercase();
+            if q.unit == UnitKind::RustCode {
+                assert!(i.contains("`code`"), "{} must reference `code`", q.id);
+            }
+            assert!(q.instructions.len() < 420, "{} is too long", q.id);
+
+            // Criteria are read as literally as instructions are.
+            let mut texts = vec![q.instructions];
+            match q.primitive {
+                Primitive::Noul { yes, no } => {
+                    texts.extend([yes, no]);
+                    assert!(
+                        !yes.to_lowercase().starts_with("no "),
+                        "{}: the `true` criterion must state the defect positively",
+                        q.id
+                    );
+                }
+                Primitive::Score { levels, bad_from } => {
+                    texts.extend(levels);
+                    assert!(levels.len() >= 2, "{} needs at least two levels", q.id);
+                    assert!(
+                        (1..levels.len()).contains(&bad_from),
+                        "{}: bad_from must leave a good level and a bad level",
+                        q.id
+                    );
+                }
+            }
+            for text in texts {
+                let lower = text.to_lowercase();
+                for banned in BANNED {
+                    assert!(!lower.contains(banned), "{} contains {banned:?}", q.id);
                 }
             }
         }
     }
 
     #[test]
-    fn instructions_follow_jev_guidance() {
-        for (q, _) in all_specs() {
-            let i = q.instructions.to_lowercase();
-            // Name the state field, avoid negated framings and asks that
-            // belong in code.
-            if q.unit == UnitKind::RustCode {
-                assert!(i.contains("`code`"), "{} must reference `code`", q.id);
-            }
-            for banned in ["unless", "how many", "line number", "compile?", "not un"] {
-                assert!(!i.contains(banned), "{} contains {banned:?}", q.id);
-            }
-            assert!(q.instructions.len() < 420, "{} is too long", q.id);
-        }
-    }
-
-    #[test]
-    fn facts_gate_on_code() {
-        assert!(facts_for("fn f() {}").is_empty());
-        let f = facts_for("tokio::select! { x = s.read_exact(&mut b) => {} }");
-        assert!(f.iter().any(|t| t.contains("cancellation safe")));
-        assert!(facts_for("let n = x as u16;")[0].contains("truncates"));
-    }
-
-    #[test]
-    fn dimension_parse_roundtrip() {
+    fn names_roundtrip_through_parse_and_serde() {
         for d in Dimension::ALL {
-            assert_eq!(Dimension::parse(d.name()), Some(d));
+            assert_eq!(Dimension::parse(d.name()), Some(*d));
+            assert_eq!(
+                serde_json::to_value(d).unwrap(),
+                serde_json::json!(d.name())
+            );
         }
+        assert_eq!(
+            Dimension::parse(" Error-Handling "),
+            Some(Dimension::ErrorHandling)
+        );
         assert_eq!(Dimension::parse("errors"), Some(Dimension::ErrorHandling));
         assert_eq!(Dimension::parse("nope"), None);
     }
 
     #[test]
-    fn triage_bars_lower_than_report_bars() {
+    fn thresholds_are_probabilities() {
+        let inside = |t: f64| t > 0.0 && t < 1.0;
         for d in Dimension::ALL {
-            assert!(d.default_triage_threshold() < d.default_report_threshold());
+            assert!(inside(d.default_triage_threshold()), "{}", d.name());
+            assert!(inside(d.default_report_threshold()), "{}", d.name());
         }
+        for (q, _) in all_specs() {
+            assert!(inside(q.triage_threshold()), "{}", q.id);
+        }
+    }
+
+    #[test]
+    fn profiles_cite_their_sources() {
+        for p in PROFILES {
+            assert!(!p.verified_against.is_empty(), "{}", p.name);
+            assert!(!p.detect_crates.is_empty(), "{}", p.name);
+            assert!(p.reference.ends_with(".md"), "{}", p.name);
+        }
+    }
+
+    #[test]
+    fn verify_questions_have_the_api_shape() {
+        let v = verify_questions();
+        assert_eq!(v[VERIFY_SUPPORT]["type"], "choice");
+        assert_eq!(v[VERIFY_SEVERITY]["type"], "score");
+        assert_eq!(v[VERIFY_CATEGORY]["type"], "choice");
+
+        let support: Vec<&String> = v[VERIFY_SUPPORT]["criteria"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .collect();
+        assert_eq!(support, [SUPPORTED, REFUTED, INSUFFICIENT_CONTEXT]);
+
+        let levels = v[VERIFY_SEVERITY]["criteria"].as_array().unwrap();
+        assert_eq!(levels.len(), SEVERITY_LEVELS.len());
+        assert_eq!(severity_name(0), Some("low"));
+        assert_eq!(severity_name(SEVERITY_HIGH_FROM), Some("high"));
+        assert_eq!(severity_name(levels.len()), None);
+
+        // No option may restate the support question.
+        let category = v[VERIFY_CATEGORY]["criteria"].as_object().unwrap();
+        assert!(!category.contains_key("not_supported"));
     }
 }
