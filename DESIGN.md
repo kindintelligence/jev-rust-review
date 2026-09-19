@@ -43,16 +43,17 @@ Claude                  = reasoning, root cause, fix  (skill + rust-reviewer age
 6. **Cargo/dependency risk is mostly deterministic.** New deps, git/path/wildcard versions, new `build.rs`, new proc-macros and lockfile churn are computed from the diff. Jev gets one question on the manifest diff.
 7. **The Axum extractor-ordering rule is enforced by the compiler.** The body extractor must be last, or the handler does not implement `Handler`. It is left to `cargo check` and not asked of Jev.
 8. **Tool output is plain JSON text, not MCP `structuredContent`.** rmcp's `Json<T>` sends both, which doubles the tokens a client ingests.
+9. **Complementary questions are never asked.** Verification used to pair a Noul ("is the claim supported?") with a category option `not_supported`. Jev does not promise that complementary questions agree, so support is now one Choice (`supported` / `refuted` / `insufficient_context`) and the category has no "not supported" option.
+10. **Undocumented `unsafe` is Clippy's job.** `clippy::undocumented_unsafe_blocks` and `clippy::missing_safety_doc` answer it deterministically, so there is no Jev question for it; the skill runs Clippy with both lints and treats the output as evidence.
+11. **The source-build fallback cannot fit the MCP startup window.** A cold `cargo build --release` measured 75 s (8 cores, registry already downloaded; aws-lc-sys alone 40 s), and 65 s with the `ring` provider instead of aws-lc. The startup timeout is 30 s. The launcher therefore never blocks on a cold build (§7).
 
 ## 3. MCP tools
 
-Server name `jev` in `.mcp.json`. The server does its own git work. Scopes are validated, and git is spawned with an argument vector: no shell, `--` separators, and revs resolved to SHAs through `git rev-parse --verify --end-of-options` before use.
+Server name `jev` in `.mcp.json`. The server does its own git work. Scopes are validated, and git is spawned from one audited function with an argument vector: no shell, `--` separators, and revs resolved to SHAs through `git rev-parse --verify --end-of-options` before use.
 
 ### `evaluate_rust_changes`
 
 Input: `repo_path?`, `scope?`, `dry_run?`, `profiles?` (override auto-detection, e.g. `["tokio"]` or `["none"]`), `max_units?`.
-
-Scopes:
 
 | Scope | Meaning |
 |---|---|
@@ -64,98 +65,123 @@ Scopes:
 
 A scope beginning with `-`, or containing NUL or a newline, is rejected. A string that is both a path and a rev resolves to the path; prefixes disambiguate.
 
-Output (JSON):
+Output (compact JSON text):
 
 - `status`: `ok` | `partial` | `jev_unavailable` | `dry_run`, plus `reason`.
-- `repo`, `scope` (resolved SHAs), `model`.
-- `project`: crates (name, dir, edition, `rust_version`, kind, `async_runtime`, `profiles`, features, `mutually_exclusive_features`), workspace members, policy files present.
-- `flagged`: (unit, dimension, strongest signal) pairs, sorted. Claude reads this first.
-- `units`: `id`, `file`, `lines`, `changed_lines` (all computed from the diff), `role` (library/binary/test/example/bench/build_script), `status`, and per question: `dimension`, `primitive`, `answer`, `probabilities?`, `confidence?`, `threshold`, `flagged`.
-- `cargo_facts`: deterministic manifest and lockfile findings.
-- `tests`: whether test code changed and which changed units are test code.
-- `skipped`: file or unit plus reason (secret-bearing file, binary, non-Rust, deleted, over budget, and so on).
-- `redactions`: count by kind.
-- `usage`: input tokens and estimated USD.
-- `cargo`: whether cargo steps are enabled and suggested commands (feature caveat included).
-- `payloads`: only in dry run. The exact request bodies, minus the auth header.
+- `repo`, `scope` (resolved SHAs), `model` (the versioned id Jev reported).
+- `project`: crates (name, dir, edition, `rust_version`, kind, `async_runtimes`, profiles, features, `mutually_exclusive_features`), workspace members, policy files, toolchain, and **`tests`**: `diff_touches_tests` plus the test and non-test units. Whether the diff touched tests is a fact about the diff, computed from file roles and `#[cfg(test)]`/`#[test]` spans, not a Jev question.
+- `flagged`: (unit, dimension, question, signal, threshold), strongest first. Claude reads this first.
+- `references`: dimension and profile reference files to load.
+- `units`: `id`, `file`, `lines`, `changed_lines` (from the diff), `role`, `status`, and per question: `dimension`, `primitive`, `answer`, `probabilities?`, `confidence?`, `signal`, `threshold`, `flagged`.
+- `cargo_facts`: deterministic manifest and lockfile findings (new/removed/changed dependencies, git/path/wildcard sources, removed features, default-feature, edition and MSRV changes, new build scripts, proc-macro enablement, lockfile churn).
+- `skipped`, `redactions`, `usage` (requests, input tokens, estimated USD), `cargo` (suggested commands, feature note).
+- `payloads`: dry run only. The exact request bodies, without the auth header.
 
 ### `verify_rust_findings`
 
-Input: `repo_path?`, `scope?` (determines which revision the file is read from), `dry_run?`, and `findings[1..=20]`. Each finding has `id?`, `dimension`, `file`, `start_line`, `end_line`, `claim` (one sentence, no line numbers) and `severity` (critical/high/medium/low).
+Input: `repo_path?`, `scope?` (which revision the file is read from), `dry_run?`, and `findings[1..=20]`, each with `id?`, `dimension`, `file`, `start_line`, `end_line`, `claim` (one sentence, identifiers not line numbers) and `severity`.
 
-The server re-reads the file itself. The state holds the enclosing item, with the claimed lines marked `>`, plus imports and the claim. It never includes the proposed severity, so Jev's severity is an independent judgment.
-
-Output per finding:
-
-- `supported` (Noul probability)
-- `severity` (Choice with probabilities and confidence) and `severity_agrees`
-- `category` (Choice: real_defect / debatable_tradeoff / style_preference / not_supported, with probabilities and confidence)
-- `verdict` (`report` | `uncertain` | `dismiss`) and the thresholds used
+The server re-reads the file itself. The state holds the enclosing item with two marker columns (claim `>`/space, then diff `+`/`-`/space, so removed lines show the old side), the imports, the enclosing `impl`/`trait` header, any matching documentation facts (§4), and the claim. The proposed severity is never sent, so Jev's severity is an independent judgment. Output per finding: `support` (the Choice), `supported` (= `P(supported)`), `severity` (Score: nearest level name, weighted level, `p_high_or_above`, probabilities, confidence), `severity_agrees`, `category` (Choice), and `verdict` (§6).
 
 ## 4. Jev question set
 
-Questions live in `src/questions.rs` as static data: id, dimension, primitive, instructions, criteria, lexical gate, excluded roles, and profile. The pipeline iterates over the data. Adding a dimension question or a profile does not touch the pipeline.
+All questions and thresholds live in `src/questions.rs` as data: id, dimension, primitive (Noul or Score), instructions, criteria, lexical gate, excluded roles, optional threshold, and for profiles the documentation they were `verified_against`. Gates are compiled once into `RegexSet`s and checked through `QuestionSpec::applies(unit, role, text)`.
 
-Principles, each taken from the jaggedness page:
+Rules, each from the jaggedness page: literal single-hop instructions naming `code`; one defect per question; Noul criteria mirror the instruction; no counting, arithmetic, line numbers, or anything a tool answers; every flag reads exactly one answer.
 
-- Instructions are literal and single-hop, name the state field (`code`), and have no negations. Noul criteria mirror the instruction (`true` = the defect is present).
-- Every question is about the changed lines (`+`) or the code they directly affect. Nothing asks for line numbers, counts, compilation results or arithmetic.
-- Gating happens in code with cheap regexes (`unsafe`, `.await`, `select!`, `extern "C"`, `macro_rules!`, `Serialize`, `pub`, `as u8`, and so on). An ungated question costs little, but an irrelevant one adds noise.
-- Complementary questions are never assumed consistent. Each flag rule reads exactly one answer.
-- The state marks the code as untrusted data in a separate `notes` field. The code itself sits in its own JSON string field, so it is structurally delimited. The fixture `prompt_injection` tests this.
+**Gate contract.** Gates run on the unit text exactly as sent: the diff marker (`+`, `-`, space) in the first column, which `context::render` emits. No marker may open a gate. Gates never see verification text, which has a claim column in front, but fact gates do, so the tests cover both forms. (A pattern using `\s*` can reach across a line break into the next marker; `ARITHMETIC` did, and now uses `[ \t]*`.)
 
-Dimensions (16, each with a reference file): correctness, ownership, type_design, error_handling, async, concurrency, unsafe, ffi, performance, idiom, api, macros, serde, security, testing (code fact), cargo. Profiles: tokio, axum, dioxus (data plus a reference file each).
+Core questions (44):
+
+| Dimension | Questions |
+|---|---|
+| correctness | `logic`, `bounds`, `cast`, `overflow`, `wildcard`, `drop_order` |
+| ownership | `clone`, `signature` |
+| type_design | `loose_types` |
+| error_handling | `swallowed`, `panic`, `lossy`, `drop_panic` |
+| async | `guard_across_await`, `blocking_call`, `select_cancellation`, `detached_task`, `unbounded`, `sequential_awaits` |
+| concurrency | `check_then_act`, `atomics`, `unsafe_send_sync`, `lock_scope` |
+| unsafe | `memory_access`, `aliasing`, `transmute` |
+| ffi | `ownership`, `pointers_and_strings`, `unwind` |
+| performance | `repeated_work` |
+| idiom | `clarity` (Score) |
+| api | `breaking_change` |
+| macros | `double_evaluation`, `name_collision` |
+| serde | `compatibility`, `silent_default` |
+| security | `injection`, `secret_exposure`, `tls_verification`, `weak_randomness`, `unbounded_input` |
+| testing | `weak_assertion` |
+| cargo (manifest units) | `manifest_risk`, `unpinned_source` |
+
+Profile questions (17): tokio `runtime_nesting`, `spawn_blocking_misuse`, `no_shutdown`, `select_not_cancel_safe`, `blocking_in_async`, `async_mutex_unneeded`; axum `error_exposure`, `layer_order`, `extension_state`, `blocking_handler`; dioxus `guard_across_await`, `read_write_overlap`, `effect_loop`, `hook_rules`, `stale_capture`, `server_fn_trust`, `untracked_dependency`.
+
+**Documentation facts** (`src/facts.rs`). Short, literal facts from official docs (for example which futures are not cancellation safe in `tokio::select!`) are added to a request's `state` when their gate matches the code, at most five. TypeSafe's Models page recommends putting reference material in `state`. In the first eval, the `select!` facts moved Jev's verification of a true cancellation claim from 0.17 to 0.74.
+
+The state marks the code as untrusted data in a separate `notes` field and holds the code in its own JSON string field. The `prompt_injection` fixture tests this.
 
 ## 5. Units and chunking
 
-- Only `.rs` files become Jev units. `Cargo.toml` diffs become one manifest unit each, and `Cargo.lock` is reduced to deterministic facts.
-- The file is parsed with `syn` (full). Each changed line maps to its innermost enclosing item: a fn, a method in an impl or trait, or a top-level struct, enum, const or macro. The unit is the union of those items. Lines outside any item, or files that do not parse, get a ±6-line window.
-- A unit's code is shown diff-style (`+` added, `-` removed, space for context), without line numbers. `imports` (top-level `use` lines) and the enclosing `impl`/`trait` header are added because they change meaning (for example `std::sync::Mutex` vs `tokio::sync::Mutex`).
-- Budget: tokens are estimated conservatively as `ceil(bytes / 3)` plus overhead per question. A unit over `max_unit_tokens` (default 6 000) is split into windows around its hunks. A review over `max_total_tokens` (default 400 000, about $0.017) or over `max_units` (default 60) stops adding units and lists the rest under `skipped`.
-- Concurrency is 4 requests. Each has a 30 s timeout and 3 retries with exponential backoff (0.5 s → 8 s, jittered) on 408, 429, 5xx (529 included), timeouts and connection errors. `Retry-After`/`retry-after-ms` is honoured, capped at 30 s. A 401 short-circuits the remaining units into `jev_unavailable`. A failed unit does not fail the review.
+- Only `.rs` files become code units. `Cargo.toml` diffs become one manifest unit each; `Cargo.lock` is reduced to deterministic facts.
+- The file is parsed with `syn`. Each non-blank changed line maps to its innermost enclosing item (fn, method, or top-level item); the unit is the union of those items. Lines outside any item get ±2 lines when the file parsed, ±6 when it did not.
+- Code is shown diff-style without line numbers, with the top-level `use` lines and the enclosing `impl`/`trait` header.
+- Budget: tokens are estimated as `ceil(bytes / 3)`. A unit over `max_unit_tokens` (6 000) is split into windows around its changes. A review over `max_total_tokens` (400 000, about $0.017) or `max_units` (60) stops adding units and lists the rest under `skipped`.
+- Concurrency 4, timeout 30 s, 3 retries with jittered backoff (0.5 s → 8 s) on 408, 429, 5xx (529 included), timeouts and connection errors. `Retry-After`/`retry-after-ms` is honoured, capped at 30 s. A 401 short-circuits the remaining units. A failed unit does not fail the review.
 
-## 6. Threshold model
+## 6. Threshold and verification model
 
-- **Triage (recall).** A Noul question flags when `noul >= threshold[dimension]`. Defaults are unsafe/async/security/concurrency 0.25, correctness/error_handling/ffi 0.30, serde/api/macros/cargo 0.35, ownership/type_design/performance 0.45, idiom 0.60. A Score question flags when the probability mass on its "bad" levels is at or above the threshold.
-- **Noul uncertainty.** `|p − 0.5|` is reported as `margin`. It is useful for display and never used as confidence.
-- **Verification (precision).** `verdict = report` when `supported >= report[dimension]` (default 0.70; unsafe 0.80) **and** the category choice is `real_defect` or `debatable_tradeoff` with `P(real_defect) >= 0.40`. `dismiss` when `supported < 0.40`, or the category choice is `not_supported` or `style_preference`. Everything else is `uncertain`, which the skill does not report unless deterministic evidence (compiler, clippy or test output) independently proves it.
-- All thresholds can be overridden by env: `JEV_RUST_REVIEW_TRIAGE_THRESHOLDS="unsafe=0.2,idiom=0.7"`, `JEV_RUST_REVIEW_REPORT_THRESHOLDS=...`, `JEV_RUST_REVIEW_DISMISS_BELOW`. **The defaults are starting points to tune against the eval corpus** (see README for the run and its date).
+**Triage (recall).** A Noul flags when `noul >= threshold`; a Score flags when the mass on its bad levels reaches the threshold. Defaults per dimension: unsafe, async, security, concurrency 0.25; correctness, error_handling, ffi 0.30; serde, api, macros, cargo 0.35; ownership, type_design, performance, testing 0.45; idiom 0.60. Per-question overrides: `correctness.wildcard` 0.45, `async.sequential_awaits` 0.55, `tokio.async_mutex_unneeded` 0.6.
+
+**Verification (precision).** Three answers, each read on its own:
+
+- `support` (Choice): `supported`, `refuted`, `insufficient_context`. The report bar applies to `P(supported)`: 0.70, or 0.80 for unsafe, idiom and type_design.
+- `severity` (Score, levels 0 = low … 3 = critical). `SEVERITY_HIGH_FROM = 2`; `p_high_or_above` is the mass on high and critical.
+- `category` (Choice): `real_defect`, `debatable_tradeoff`, `style_preference`.
+
+Verdict, in order:
+
+1. `dismiss` if `support` chose `refuted` or `category` chose `style_preference`.
+2. `report` if `P(supported) >= report bar` and the category is `real_defect`, or `debatable_tradeoff` with `P(real_defect) >= 0.40`.
+3. `insufficient_context` if `support` chose `insufficient_context`. **Not a refutation**: cross-file findings (lock ordering, semver breaks) land here. The skill keeps them when Claude's own confidence is High and says Jev could not verify them from local context.
+4. `dismiss` if `P(supported) < 0.40`.
+5. `uncertain` otherwise. The skill reports these only with deterministic evidence.
+
+All bars are overridable by environment variable (README). They are starting points tuned against the eval corpus; retune only with eval evidence.
 
 ## 7. Distribution
 
-`.mcp.json` runs `sh ${CLAUDE_PLUGIN_ROOT}/scripts/launch.sh`. The launcher tries these in order:
+`.mcp.json` runs `sh ${CLAUDE_PLUGIN_ROOT}/scripts/launch.sh`, which execs the first binary that reports the plugin's version:
 
-1. `JEV_RUST_REVIEW_BIN`, if set and executable (for manual installs: `cargo install --git …`).
-2. The cached binary `${CLAUDE_PLUGIN_DATA}/bin/<version>/jev-rust-review`.
-3. `${CLAUDE_PLUGIN_ROOT}/target/release/jev-rust-review`, if its `--version` matches (local development). It is copied into the cache.
-4. A prebuilt release asset for the host triple. It is verified against the release's `SHA256SUMS` before it is cached. Disable with `JEV_RUST_REVIEW_NO_DOWNLOAD=1`. Same-origin checksums prove integrity, not authenticity.
-5. A local `cargo build --release --locked` into `${CLAUDE_PLUGIN_DATA}/build`, under a lock directory. It waits up to 20 s (below the 30 s MCP startup timeout). If the build is still running, the launcher exits with one message on stderr pointing at the build log and telling the user to reconnect via `/mcp` once it finishes.
+1. `JEV_RUST_REVIEW_BIN`;
+2. the cached `${CLAUDE_PLUGIN_DATA}/bin/<version>/jev-rust-review`;
+3. `jev-rust-review` on `PATH` (for example from `cargo install`);
+4. `${CLAUDE_PLUGIN_ROOT}/target/release/jev-rust-review` (local development);
+5. a prebuilt release asset for the host triple, verified against the release's `SHA256SUMS` before it is cached (same-origin checksums prove integrity, not authenticity);
+6. a local `cargo build --release --locked`, **detached** (`setsid`/`nohup`), waiting up to 20 s. If the build is still running the launcher exits with one message pointing at the log and telling the user to reconnect via `/mcp`; the next launch finds the cached binary. `launch.sh --install` runs the same steps in the foreground.
 
-Anything else exits non-zero with one actionable message. Release targets: x86_64/aarch64 Linux (musl, static) and x86_64/aarch64 macOS.
+**Profiles.** `release` is tuned to build quickly (opt-level 2, no LTO) because step 6 compiles it on the user's machine; `dist` (thin LTO, one codegen unit) is for the binaries CI ships. The release workflow builds `--profile dist` for x86_64/aarch64 Linux (musl), x86_64/aarch64 macOS and x86_64 Windows, collecting from `target/<triple>/dist/`.
+
+**Build time.** Cold `cargo build --release`: 75 s with aws-lc-rs (the default rustls provider; aws-lc-sys is 40 s of C), 65 s with `ring`. Neither fits the 30 s window, which is why step 5 comes first and step 6 never blocks startup. Switching to `ring` would save about 10 s and is not worth losing reqwest's default provider. `scripts/test-install.sh` proves both paths (source build from an empty data dir, verified download, tampered checksum refused) on every CI run.
 
 ## 8. Security and privacy
 
-- The key comes only from `TYPESAFE_API_KEY`. The plugin's `userConfig` (`sensitive: true`) maps into that same variable in `.mcp.json`. The key is never logged or echoed, and the `Debug` impl for config masks it.
-- The server never serialises process environment into a request.
-- Secret-bearing files are skipped by name: `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`, `id_ed25519*`, and `*credential*`/`*secret*`. Token formats are redacted line by line (AWS, GitHub, GitLab, Slack, Stripe, Google, OpenAI/Anthropic-style `sk-`, JWT, PEM blocks), along with high-entropy string literals assigned to secret-ish names. Counts are reported.
-- stdout carries only JSON-RPC. `#![deny(clippy::print_stdout)]` plus a test that scans `src/` for print macros and stdout handles, and a smoke test that asserts every stdout line parses as JSON-RPC.
+- The key comes only from `TYPESAFE_API_KEY`, or the plugin's `userConfig` (`sensitive: true`) mapped to `JEV_RUST_REVIEW_API_KEY`. It is never logged; `Config`'s `Debug` masks it.
+- The process environment is never enumerated (`std::env::vars` is a disallowed method).
+- Secret-bearing files are skipped by name (`.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`, `id_ed25519*`, `*credential*`, `*secret*`). Token formats and high-entropy secret assignments are redacted line by line, and counts are reported.
+- stdout carries only JSON-RPC: `print!`/`println!` are disallowed macros, `#![deny(clippy::print_stdout)]` is set, a test scans `src/`, and the smoke test asserts every stdout line is JSON-RPC.
 
 ## 9. Progress checklist
 
 - [x] Preflight, private repo created
 - [x] Research (TypeSafe, Claude Code plugins, rmcp, Dioxus/Axum/Tokio, Codex)
-- [x] DESIGN.md
-- [ ] Core modules: diff, git/scope, rust_project, redact, questions, context/units, jev client, review pipeline, config, error
-- [ ] MCP server (rmcp) with evaluate + verify tools, dry run
-- [ ] Unit tests (diff, scope, project, redaction, thresholds, response parsing)
-- [ ] HTTP mock tests (401/400/422/429/529, Retry-After, timeout, malformed)
-- [ ] stdout guard test
-- [ ] Plugin: plugin.json, marketplace.json, .mcp.json, skill, references, agent
-- [ ] scripts/launch.sh + fresh-install test; scripts/smoke.sh
-- [ ] Fixture corpus (buggy + clean) + offline pipeline tests
-- [ ] Live eval (ignored test) run + threshold tuning + README numbers
-- [ ] CI (Linux + macOS) green; MSRV job
-- [ ] Release workflow + first release
-- [ ] README
-- [ ] claude plugin validate; headless session check
+- [x] Core modules, MCP server, dry run
+- [x] Unit, HTTP-mock, pipeline, stdout-guard and plugin-consistency tests
+- [x] Plugin: plugin.json, marketplace.json, .mcp.json, skill, references, agent
+- [x] launch.sh + fresh-install test; smoke.sh
+- [x] Fixture corpus (11 buggy, 7 clean), recordings, offline replay
+- [x] Adopt the redesigned questions.rs, Cargo.toml and clippy.toml; new verification model
+- [x] Live eval on the new question ids
+- [x] CI and release workflows
+- [x] README
+- [ ] CI green on GitHub
+- [ ] First tagged release (prebuilt binaries)
+- [ ] Headless Claude Code session check
 - [ ] Secret scan of history; flip to public
