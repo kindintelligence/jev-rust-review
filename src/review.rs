@@ -1145,7 +1145,8 @@ fn prob(c: &ChoiceOut, key: &str) -> f64 {
 /// Each rule reads one answer; nothing assumes `support` and `category`
 /// agree with each other.
 ///
-/// - `dismiss`: Jev chose `refuted`, or the claim is a style preference, or
+/// - `dismiss`: Jev chose `refuted`, or confidently called the claim a style
+///   preference, or
 ///   `P(supported)` is below the dismiss bar while Jev did not say it lacked
 ///   context.
 /// - `report`: `P(supported)` reaches the report bar and the claim is a
@@ -1163,11 +1164,14 @@ pub fn verdict(
     let p_supported = prob(support, questions::SUPPORTED);
     let cat = category.choice.as_str();
     let lacks_context = support.choice == questions::INSUFFICIENT_CONTEXT;
-    if support.choice == questions::REFUTED || cat == "style_preference" {
+    let confident_style =
+        cat == "style_preference" && category.confidence >= questions::STYLE_DISMISS_MIN_CONFIDENCE;
+    if support.choice == questions::REFUTED || confident_style {
         "dismiss"
     } else if p_supported >= report_t
         && (cat == "real_defect"
-            || (cat == "debatable_tradeoff" && prob(category, "real_defect") >= 0.40))
+            || (cat == "debatable_tradeoff"
+                && prob(category, "real_defect") >= questions::TRADEOFF_REAL_DEFECT_BAR))
     {
         "report"
     } else if lacks_context {
@@ -1594,6 +1598,22 @@ mod tests {
         assert_eq!(
             v(&support("supported", 0.9), &cat("debatable_tradeoff", 0.2)),
             "uncertain"
+        );
+    }
+
+    #[test]
+    fn narrow_style_win_does_not_dismiss_a_supported_claim() {
+        let mut narrow = cat("style_preference", 0.35);
+        narrow.confidence = 0.2;
+        assert_eq!(
+            verdict(&support("supported", 0.95), &narrow, 0.7, 0.4),
+            "uncertain"
+        );
+        let mut clear = cat("style_preference", 0.05);
+        clear.confidence = 0.9;
+        assert_eq!(
+            verdict(&support("supported", 0.95), &clear, 0.7, 0.4),
+            "dismiss"
         );
     }
 

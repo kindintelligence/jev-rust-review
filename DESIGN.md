@@ -207,13 +207,13 @@ Per-question overrides: `correctness.wildcard` 0.45, `async.sequential_awaits` 0
 
 The verdict is the first rule that matches:
 
-1. `dismiss` if `support` chose `refuted` or `category` chose `style_preference`.
-2. `report` if `P(supported)` reaches the report bar and the category is `real_defect`. A `debatable_tradeoff` also counts if `P(real_defect)` is at least 0.40.
+1. `dismiss` if `support` chose `refuted`. Also `dismiss` if `category` chose `style_preference` with confidence of at least `STYLE_DISMISS_MIN_CONFIDENCE` (0.50). A narrower style win falls through to the later rules.
+2. `report` if `P(supported)` reaches the report bar and the category is `real_defect`. A `debatable_tradeoff` also counts if `P(real_defect)` is at least `TRADEOFF_REAL_DEFECT_BAR` (0.40).
 3. `insufficient_context` if `support` chose `insufficient_context`. **This is not a refutation.** Cross-file findings, such as lock ordering or semver breaks, land here. The skill keeps them when Claude's own confidence is High. It says Jev could not verify them from local context.
 4. `dismiss` if `P(supported)` is below 0.40.
 5. `uncertain` otherwise. The skill reports these only with deterministic evidence.
 
-Environment variables override every bar (see the README). The bars are starting points tuned against the eval corpus. Retune them only with eval evidence.
+Both named bars live in `src/questions.rs` with the other thresholds. Environment variables override the report and dismiss bars (see the README). The bars are starting points tuned against the eval corpus. Retune them only with eval evidence.
 
 ## 7. Distribution
 

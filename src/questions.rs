@@ -962,6 +962,15 @@ pub const CATEGORY_OPTIONS: &[(&str, &str)] = &[
     ),
 ];
 
+/// A `debatable_tradeoff` claim is reported only if Jev still gives
+/// `real_defect` at least this much probability.
+pub const TRADEOFF_REAL_DEFECT_BAR: f64 = 0.40;
+
+/// `style_preference` dismisses a claim only when the category answer is at
+/// least this confident. A narrow style win on a well-supported claim falls
+/// through to `uncertain` instead of being thrown away.
+pub const STYLE_DISMISS_MIN_CONFIDENCE: f64 = 0.50;
+
 fn choice_json(instructions: &str, options: &[(&str, &str)]) -> serde_json::Value {
     let criteria: serde_json::Map<String, serde_json::Value> = options
         .iter()
