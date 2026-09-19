@@ -186,6 +186,7 @@ pub struct Prepared {
     pub redactions: Redactions,
     pub cargo_facts: CargoFacts,
     pub active_profiles: BTreeSet<String>,
+    pub tests: TestFacts,
 }
 
 fn active_profiles_for(
@@ -300,14 +301,49 @@ pub fn prepare(cfg: &Config, repo: &Path, params: &EvaluateParams) -> Result<Pre
     let rs = git.resolve(scope)?;
     let project = ProjectInfo::load(&root);
 
-    let mut files = diff::parse(&git.diff(&rs)?);
+    let (files, whole_file) = collect_files(&git, &rs)?;
+    let mut acc = Collected::default();
+    let ctx = ScopeCtx {
+        cfg,
+        git: &git,
+        rs: &rs,
+        project: &project,
+        whole_file,
+    };
+    for f in &files {
+        collect_file(&ctx, f, &mut acc)?;
+    }
+    let tests = test_facts(&acc.units);
+    let Collected {
+        units,
+        mut skipped,
+        redactions,
+        cargo_facts,
+        ..
+    } = acc;
+    let (units, active_profiles) = budget_units(cfg, params, &project, units, &mut skipped);
+
+    Ok(Prepared {
+        repo: root.display().to_string(),
+        scope: rs.description.clone(),
+        project,
+        units,
+        skipped,
+        redactions,
+        cargo_facts,
+        active_profiles,
+        tests,
+    })
+}
+
+/// The diff's files plus untracked `.rs` files; for a clean Path scope, the
+/// `.rs` files under the path reviewed whole. Returns `(files, whole_file)`.
+fn collect_files(git: &Git, rs: &ResolvedScope) -> Result<(Vec<FileDiff>, bool)> {
+    let mut files = diff::parse(&git.diff(rs)?);
     let tracked: BTreeSet<String> = files.iter().map(|f| f.path().to_string()).collect();
-    for u in git.untracked(&rs)? {
-        if !tracked.contains(&u) && u.ends_with(".rs") && !redact::is_secret_file(&u) {
-            if let Some(content) = git.read_new(&rs.new_side, &u)? {
-                files.push(context::synthetic_added(&u, &content));
-            }
-        } else if redact::is_secret_file(&u) {
+    for u in git.untracked(rs)? {
+        if redact::is_secret_file(&u) {
+            // Recorded (and then skipped) so the report says it was seen.
             files.push(FileDiff {
                 old_path: None,
                 new_path: Some(u),
@@ -315,145 +351,187 @@ pub fn prepare(cfg: &Config, repo: &Path, params: &EvaluateParams) -> Result<Pre
                 is_binary: false,
                 hunks: vec![],
             });
-        }
-    }
-
-    let mut whole_file = false;
-    if files.is_empty()
-        && let git::Scope::Path(p) = &rs.scope
-    {
-        whole_file = true;
-        for f in git
-            .tracked_under(p)?
-            .into_iter()
-            .filter(|f| f.ends_with(".rs"))
+        } else if !tracked.contains(&u)
+            && u.ends_with(".rs")
+            && let Some(content) = git.read_new(&rs.new_side, &u)?
         {
-            if files.len() >= MAX_WHOLE_FILES {
-                break;
-            }
-            if let Some(content) = git.read_new(&rs.new_side, &f)? {
-                files.push(context::synthetic_added(&f, &content));
-            }
+            files.push(context::synthetic_added(&u, &content));
         }
     }
+    let git::Scope::Path(p) = &rs.scope else {
+        return Ok((files, false));
+    };
+    if !files.is_empty() {
+        return Ok((files, false));
+    }
+    let candidates = git.tracked_under(p)?;
+    for f in candidates
+        .iter()
+        .filter(|f| f.ends_with(".rs"))
+        .take(MAX_WHOLE_FILES)
+    {
+        if let Some(content) = git.read_new(&rs.new_side, f)? {
+            files.push(context::synthetic_added(f, &content));
+        }
+    }
+    Ok((files, true))
+}
 
-    let mut skipped = Vec::new();
-    let mut redactions = Redactions::default();
-    let mut cargo_facts = CargoFacts::default();
-    let mut units: Vec<Unit> = Vec::new();
-    let mut next_id = 0usize;
-    for f in &files {
-        let path = f.path().to_string();
-        let skip = |reason: &str| Skip {
-            file: path.clone(),
+#[derive(Default)]
+struct Collected {
+    units: Vec<Unit>,
+    skipped: Vec<Skip>,
+    redactions: Redactions,
+    cargo_facts: CargoFacts,
+    next_id: usize,
+}
+
+impl Collected {
+    fn skip(&mut self, file: &str, reason: &str) {
+        self.skipped.push(Skip {
+            file: file.to_string(),
             lines: None,
             reason: reason.into(),
-        };
-        if redact::is_secret_file(&path) {
-            skipped.push(skip("secret-bearing file name; never sent"));
-            continue;
-        }
-        if f.is_binary {
-            skipped.push(skip("binary file"));
-            continue;
-        }
-        let name = path.rsplit('/').next().unwrap_or(&path);
-        if name == "Cargo.lock" {
-            cargo_facts.lockfiles.push(lockfile_facts(&git, &rs, &path));
-            continue;
-        }
-        if name == "Cargo.toml" {
-            if f.status != FileStatus::Deleted {
-                cargo_facts.manifests.push(manifest_facts(&git, &rs, &path));
-                if let Some(u) = context::manifest_unit(
-                    f,
-                    cfg.max_unit_tokens,
-                    &mut next_id,
-                    &mut redactions,
-                    &mut skipped,
-                ) {
-                    units.push(u);
-                }
-            }
-            continue;
-        }
-        if !path.ends_with(".rs") {
-            skipped.push(skip("not a Rust source file"));
-            continue;
-        }
-        if f.status == FileStatus::Deleted {
-            cargo_facts.deleted_rust_files.push(path.clone());
-            skipped.push(skip("file deleted; check for removed public API"));
-            continue;
-        }
-        if name == "build.rs" && f.status == FileStatus::Added {
-            cargo_facts.new_build_scripts.push(path.clone());
-        }
-        if f.hunks.is_empty() {
-            skipped.push(skip("no content changes (rename or mode change only)"));
-            continue;
-        }
-        let Some(content) = git.read_new(&rs.new_side, &path)? else {
-            skipped.push(skip("could not read file content on the new side"));
-            continue;
-        };
-        let krate = project.crate_for(&path);
-        let role = rust_project::role_for(&path, krate);
-        let test_ranges = rust_project::test_line_ranges(&content);
-        units.extend(context::rust_units(
-            &FileInput {
-                diff: f,
-                content: &content,
-                role,
-                test_ranges: &test_ranges,
-                whole_file,
-            },
-            cfg.max_unit_tokens,
-            &mut next_id,
-            &mut redactions,
-            &mut skipped,
-        ));
+        });
     }
+}
 
-    // Budgeting: stop adding units once the unit cap or token cap is hit.
+/// Read-only inputs shared by every file in a scope.
+#[derive(Clone, Copy)]
+struct ScopeCtx<'a> {
+    cfg: &'a Config,
+    git: &'a Git,
+    rs: &'a ResolvedScope,
+    project: &'a ProjectInfo,
+    whole_file: bool,
+}
+
+/// Classify one changed file: skip it, record Cargo facts, or build units.
+fn collect_file(scope: &ScopeCtx, f: &FileDiff, acc: &mut Collected) -> Result<()> {
+    let ScopeCtx {
+        cfg,
+        git,
+        rs,
+        project,
+        whole_file,
+    } = *scope;
+    let path = f.path();
+    let name = path.rsplit('/').next().unwrap_or(path);
+    if redact::is_secret_file(path) {
+        acc.skip(path, "secret-bearing file name; never sent");
+    } else if f.is_binary {
+        acc.skip(path, "binary file");
+    } else if name == "Cargo.lock" {
+        acc.cargo_facts
+            .lockfiles
+            .push(lockfile_facts(git, rs, path));
+    } else if name == "Cargo.toml" {
+        if f.status != FileStatus::Deleted {
+            acc.cargo_facts
+                .manifests
+                .push(manifest_facts(git, rs, path));
+            let unit = context::manifest_unit(
+                f,
+                cfg.max_unit_tokens,
+                &mut acc.next_id,
+                &mut acc.redactions,
+                &mut acc.skipped,
+            );
+            acc.units.extend(unit);
+        }
+    } else if !path.ends_with(".rs") {
+        acc.skip(path, "not a Rust source file");
+    } else if f.status == FileStatus::Deleted {
+        acc.cargo_facts.deleted_rust_files.push(path.to_string());
+        acc.skip(path, "file deleted; check for removed public API");
+    } else if f.hunks.is_empty() {
+        acc.skip(path, "no content changes (rename or mode change only)");
+    } else {
+        if name == "build.rs" && f.status == FileStatus::Added {
+            acc.cargo_facts.new_build_scripts.push(path.to_string());
+        }
+        let Some(content) = git.read_new(&rs.new_side, path)? else {
+            acc.skip(path, "could not read file content on the new side");
+            return Ok(());
+        };
+        let test_ranges = rust_project::test_line_ranges(&content);
+        let input = FileInput {
+            diff: f,
+            content: &content,
+            role: rust_project::role_for(path, project.crate_for(path)),
+            test_ranges: &test_ranges,
+            whole_file,
+        };
+        let units = context::rust_units(
+            &input,
+            cfg.max_unit_tokens,
+            &mut acc.next_id,
+            &mut acc.redactions,
+            &mut acc.skipped,
+        );
+        acc.units.extend(units);
+    }
+    Ok(())
+}
+
+/// Test facts cover every Rust unit, including ones no question applies to.
+fn test_facts(units: &[Unit]) -> TestFacts {
+    let mut tests = TestFacts::default();
+    for u in units.iter().filter(|u| u.kind == UnitKind::RustCode) {
+        let label = format!("{}:{}-{}", u.file, u.lines.0, u.lines.1);
+        if u.role == Role::Test {
+            tests.test_code_changed = true;
+            tests.test_units.push(label);
+        } else {
+            tests.non_test_units.push(label);
+        }
+    }
+    tests
+}
+
+type Budgeted = (
+    Vec<(Unit, Vec<&'static QuestionSpec>, jev::Request)>,
+    BTreeSet<String>,
+);
+
+/// Select questions per unit and stop adding units once the unit cap, the
+/// total token budget, or Jev's state limit would be exceeded. Every unit
+/// left out is reported in `skipped` with the reason.
+fn budget_units(
+    cfg: &Config,
+    params: &EvaluateParams,
+    project: &ProjectInfo,
+    units: Vec<Unit>,
+    skipped: &mut Vec<Skip>,
+) -> Budgeted {
     let max_units = params.max_units.unwrap_or(cfg.max_units).max(1);
     let mut total = 0usize;
     let mut out = Vec::new();
     let mut active_all = BTreeSet::new();
     for u in units {
-        let profiles = active_profiles_for(cfg, params, &project, &u.file);
+        let profiles = active_profiles_for(cfg, params, project, &u.file);
         let qs = select_questions(&u, &profiles);
-        if qs.is_empty() {
-            skipped.push(Skip {
-                file: u.file.clone(),
-                lines: Some(u.lines),
-                reason: "no question applies to this unit".into(),
-            });
-            continue;
-        }
-        let req = build_request(cfg, &u, &qs, &project);
+        let req = build_request(cfg, &u, &qs, project);
         let est = req.estimated_tokens();
-        if out.len() >= max_units {
+        let reason = if qs.is_empty() {
+            Some("no question applies to this unit".to_string())
+        } else if out.len() >= max_units {
+            Some(format!("over the unit cap ({max_units})"))
+        } else if total + est > cfg.max_total_tokens {
+            Some(format!(
+                "over the total token budget ({})",
+                cfg.max_total_tokens
+            ))
+        } else if req.estimated_state_plus_longest() > 31_000 {
+            Some("state exceeds Jev's 32k state limit".to_string())
+        } else {
+            None
+        };
+        if let Some(reason) = reason {
             skipped.push(Skip {
                 file: u.file.clone(),
                 lines: Some(u.lines),
-                reason: format!("over the unit cap ({max_units})"),
-            });
-            continue;
-        }
-        if total + est > cfg.max_total_tokens {
-            skipped.push(Skip {
-                file: u.file.clone(),
-                lines: Some(u.lines),
-                reason: format!("over the total token budget ({})", cfg.max_total_tokens),
-            });
-            continue;
-        }
-        if req.estimated_state_plus_longest() > 31_000 {
-            skipped.push(Skip {
-                file: u.file.clone(),
-                lines: Some(u.lines),
-                reason: "state exceeds Jev's 32k state limit".into(),
+                reason,
             });
             continue;
         }
@@ -461,17 +539,7 @@ pub fn prepare(cfg: &Config, repo: &Path, params: &EvaluateParams) -> Result<Pre
         active_all.extend(profiles);
         out.push((u, qs, req));
     }
-
-    Ok(Prepared {
-        repo: root.display().to_string(),
-        scope: rs.description.clone(),
-        project,
-        units: out,
-        skipped,
-        redactions,
-        cargo_facts,
-        active_profiles: active_all,
-    })
+    (out, active_all)
 }
 
 fn threshold_for(cfg: &Config, q: &QuestionSpec) -> f64 {
@@ -572,19 +640,6 @@ pub async fn evaluate(
         note,
     };
 
-    let mut tests = TestFacts::default();
-    for (u, _, _) in &prepared.units {
-        if u.kind != UnitKind::RustCode {
-            continue;
-        }
-        if u.role == Role::Test {
-            tests.test_code_changed = true;
-            tests.test_units.push(u.id.clone());
-        } else {
-            tests.non_test_units.push(u.id.clone());
-        }
-    }
-
     let mut out = EvaluateOutput {
         status: "ok",
         reason: None,
@@ -597,7 +652,7 @@ pub async fn evaluate(
         references: Vec::new(),
         units: Vec::new(),
         cargo_facts: prepared.cargo_facts,
-        tests,
+        tests: prepared.tests,
         skipped: prepared.skipped,
         redactions: prepared.redactions.by_kind.clone(),
         usage: UsageOut::default(),
@@ -681,8 +736,10 @@ pub async fn evaluate(
     let mut responses: Vec<Option<std::result::Result<jev::Response, JevError>>> =
         (0..prepared.units.len()).map(|_| None).collect();
     while let Some(joined) = set.join_next().await {
-        if let Ok((idx, r)) = joined {
-            responses[idx] = Some(r);
+        if let Ok((idx, r)) = joined
+            && let Some(slot) = responses.get_mut(idx)
+        {
+            *slot = Some(r);
         }
     }
 
@@ -782,7 +839,7 @@ pub async fn evaluate(
                 "{} of {} units had errors: {}",
                 errors.len(),
                 out.units.len(),
-                errors[0]
+                errors.first().map(String::as_str).unwrap_or_default()
             )
         });
     }
@@ -1034,7 +1091,7 @@ pub struct Finding {
     /// Caller's identifier for the finding, echoed back.
     #[serde(default)]
     pub id: Option<String>,
-    /// Review dimension, e.g. "async", "unsafe", "error_handling".
+    /// Review dimension, e.g. `async`, `unsafe`, `error_handling`.
     pub dimension: String,
     /// Repo-relative path of the file.
     pub file: String,
@@ -1074,7 +1131,7 @@ pub struct VerifyResult {
     pub severity_agrees: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<ChoiceOut>,
-    /// report | uncertain | dismiss | not_verified
+    /// `report`, `uncertain`, `dismiss`, or `not_verified`.
     pub verdict: &'static str,
     pub report_threshold: f64,
     pub dismiss_below: f64,
@@ -1147,7 +1204,13 @@ fn verify_region(content: &str, s: u32, e: u32, budget: usize) -> (u32, u32, Opt
             header = sp.header.clone();
         }
     }
-    let text = lines[(lo as usize - 1).min(lines.len())..(hi as usize).min(lines.len())].join("\n");
+    let text = lines
+        .iter()
+        .skip(lo as usize - 1)
+        .take((hi - lo + 1) as usize)
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n");
     if context::est_tokens(&text) > budget {
         return window(header);
     }
@@ -1215,7 +1278,9 @@ pub async fn verify(
     let mut errors = Vec::new();
     while let Some(joined) = set.join_next().await {
         let Ok((idx, r)) = joined else { continue };
-        let res = &mut results[idx];
+        let Some(res) = results.get_mut(idx) else {
+            continue;
+        };
         match r {
             Ok(resp) => {
                 out.usage.requests += 1;

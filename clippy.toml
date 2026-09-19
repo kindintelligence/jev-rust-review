@@ -1,0 +1,122 @@
+# clippy.toml — jev-rust-review
+#
+# This file only *configures* lints; it cannot turn them on. Lint levels live
+# in Cargo.toml under [lints.clippy] (companion block at the bottom of this
+# file). Every rule here encodes a design decision from DESIGN.md, so each one
+# carries its reason and Clippy prints that reason at the violation.
+#
+# Validated against clippy 0.1.95 (Rust 1.95).
+
+# MSRV is deliberately NOT set here. Clippy reads `rust-version` from
+# Cargo.toml, which keeps a single source of truth for CI, docs and lints.
+
+# We ship a binary, not a library, so there is no exported API to protect.
+# Let Clippy suggest signature changes freely.
+avoid-breaking-exported-api = false
+
+# ── Tests ────────────────────────────────────────────────────────────────────
+# Matches our own review policy: unwrap, panics and indexing are fine in tests.
+# `dbg!` stays banned everywhere (dbg_macro), since it is never meant to land.
+# Note: these apply inside #[test] fns and #[cfg(test)] modules. Shared helpers
+# in tests/ that sit outside a #[test] fn need their own #[expect(...)].
+allow-unwrap-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-print-in-tests = true
+
+# ── Size and shape: "small enough to understand" ─────────────────────────────
+too-many-lines-threshold = 80
+too-many-arguments-threshold = 6
+cognitive-complexity-threshold = 20
+excessive-nesting-threshold = 5
+# Two bools in a signature is already a readability smell; prefer an enum.
+max-fn-params-bools = 2
+# Config legitimately holds four switches (check / clippy / test / dry-run).
+max-struct-bools = 4
+
+# ── Docs ─────────────────────────────────────────────────────────────────────
+# ".." keeps Clippy's default list; the rest are names, not code identifiers.
+doc-valid-idents = ["..", "TypeSafe", "SystemOne"]
+
+# (Kept above the first [[table]] header: TOML would otherwise attach this
+# key to the preceding [[disallowed-methods]] entry.)
+# await_holding_lock already covers std::sync guards. This adds the classic
+# tracing mistake: a span guard held across .await attributes other tasks'
+# events to this span. Use `.instrument(span)` instead.
+await-holding-invalid-types = [
+  { path = "tracing::span::Entered", reason = "use .instrument(span); a guard held across .await mislabels other tasks" },
+  { path = "tracing::span::EnteredSpan", reason = "use .instrument(span); a guard held across .await mislabels other tasks" },
+]
+
+# ── stdout belongs to the MCP stdio transport ────────────────────────────────
+# One stray byte on stdout corrupts the JSON-RPC stream and the client drops
+# the server. Log through `tracing`, whose subscriber writes to stderr.
+[[disallowed-macros]]
+path = "std::println"
+reason = "stdout is the MCP stdio transport; use tracing (stderr) instead"
+
+[[disallowed-macros]]
+path = "std::print"
+reason = "stdout is the MCP stdio transport; use tracing (stderr) instead"
+
+# ── Privacy: never bulk-read the process environment ─────────────────────────
+# config.rs reads named variables one at a time with std::env::var. Iterating
+# the whole environment is how secrets end up in a request or a log line.
+[[disallowed-methods]]
+path = "std::env::vars"
+reason = "never enumerate the environment; read named keys in config.rs"
+
+[[disallowed-methods]]
+path = "std::env::vars_os"
+reason = "never enumerate the environment; read named keys in config.rs"
+
+[[disallowed-methods]]
+path = "std::env::set_var"
+reason = "not thread-safe under a multi-threaded runtime; config is read once at startup"
+
+[[disallowed-methods]]
+path = "std::env::remove_var"
+reason = "not thread-safe under a multi-threaded runtime; config is read once at startup"
+
+# ── Subprocesses go through one audited door ─────────────────────────────────
+# git.rs owns the only spawn site: argument vector, no shell, scopes validated,
+# `--` separator. It carries the single #[expect(clippy::disallowed_methods)].
+[[disallowed-methods]]
+path = "std::process::Command::new"
+reason = "spawn only via git::run, which validates scope args and never uses a shell"
+
+[[disallowed-methods]]
+path = "tokio::process::Command::new"
+reason = "spawn only via git::run, which validates scope args and never uses a shell"
+
+[[disallowed-methods]]
+path = "std::process::exit"
+reason = "skips destructors and log flushing; return an error from main instead"
+
+# ── HTTP: one client, explicit timeouts, TLS always verified ─────────────────
+[[disallowed-methods]]
+path = "reqwest::Client::new"
+reason = "no timeouts and panics on TLS init failure; use the shared builder in jev.rs"
+
+[[disallowed-methods]]
+path = "reqwest::get"
+reason = "builds a throwaway client with no timeouts; use the shared client in jev.rs"
+
+[[disallowed-methods]]
+path = "reqwest::ClientBuilder::danger_accept_invalid_certs"
+reason = "TLS verification is never disabled; source code is in these requests"
+allow-invalid = true # only exists when a TLS feature is enabled
+
+[[disallowed-methods]]
+path = "reqwest::ClientBuilder::danger_accept_invalid_hostnames"
+reason = "TLS verification is never disabled; source code is in these requests"
+allow-invalid = true # only exists with some TLS backends
+
+# ── Async hygiene: the same rules we review other people's code for ──────────
+[[disallowed-methods]]
+path = "std::thread::sleep"
+reason = "blocks a runtime worker; use tokio::time::sleep"
+
+[[disallowed-methods]]
+path = "tokio::sync::mpsc::unbounded_channel"
+reason = "no backpressure; use a bounded channel sized from the concurrency cap"

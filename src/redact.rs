@@ -100,7 +100,9 @@ impl Redactions {
 fn entropy(s: &str) -> f64 {
     let mut counts = [0usize; 256];
     for b in s.bytes() {
-        counts[b as usize] += 1;
+        if let Some(c) = counts.get_mut(usize::from(b)) {
+            *c += 1;
+        }
     }
     let n = s.len() as f64;
     counts

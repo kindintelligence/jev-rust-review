@@ -42,3 +42,19 @@ tempfile = "3"
 lto = "thin"
 codegen-units = 4
 strip = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "warn"
+panic = "warn"
+indexing_slicing = "warn"
+dbg_macro = "warn"
+todo = "warn"
+print_stdout = "warn"
+excessive_nesting = "warn"
+cognitive_complexity = "warn"
+fn_params_excessive_bools = "warn"
+struct_excessive_bools = "warn"
+doc_markdown = "warn"

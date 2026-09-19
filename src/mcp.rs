@@ -102,24 +102,28 @@ pub fn file_uri_to_path(uri: &str) -> Option<PathBuf> {
     let mut decoded = Vec::with_capacity(rest.len());
     let b = rest.as_bytes();
     let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%'
-            && i + 2 < b.len()
-            && let Ok(v) = u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).ok()?, 16)
-        {
-            decoded.push(v);
-            i += 3;
-            continue;
+    while let Some(&byte) = b.get(i) {
+        let hex = b
+            .get(i + 1..i + 3)
+            .filter(|_| byte == b'%')
+            .and_then(|h| std::str::from_utf8(h).ok())
+            .and_then(|h| u8::from_str_radix(h, 16).ok());
+        match hex {
+            Some(v) => {
+                decoded.push(v);
+                i += 3;
+            }
+            None => {
+                decoded.push(byte);
+                i += 1;
+            }
         }
-        decoded.push(b[i]);
-        i += 1;
     }
     let s = String::from_utf8(decoded).ok()?;
-    let bytes = s.as_bytes();
-    let s = if bytes.len() > 2 && bytes[0] == b'/' && bytes[2] == b':' {
-        s[1..].to_string()
-    } else {
-        s
+    // "/C:/x" is a Windows drive path; drop the leading slash.
+    let s = match s.as_bytes() {
+        [b'/', _, b':', ..] => s.get(1..).unwrap_or(&s).to_string(),
+        _ => s,
     };
     Some(PathBuf::from(s))
 }

@@ -89,151 +89,164 @@ impl FileDiff {
 /// --src-prefix=a/ --dst-prefix=b/`. Unknown lines are ignored rather than
 /// treated as errors: the parser must never panic on odd input.
 pub fn parse(input: &str) -> Vec<FileDiff> {
-    let mut files: Vec<FileDiff> = Vec::new();
-    let mut cur: Option<FileDiff> = None;
-    let mut hunk: Option<Hunk> = None;
-    let mut old_no = 0u32;
-    let mut new_no = 0u32;
-
-    let flush_hunk = |cur: &mut Option<FileDiff>, hunk: &mut Option<Hunk>| {
-        if let (Some(f), Some(h)) = (cur.as_mut(), hunk.take()) {
-            f.hunks.push(h);
-        }
-    };
-
+    let mut c = Cursor::default();
     for raw in input.split('\n') {
         let line = raw.strip_suffix('\r').unwrap_or(raw);
-
         if let Some(rest) = line.strip_prefix("diff --git ") {
-            flush_hunk(&mut cur, &mut hunk);
-            if let Some(f) = cur.take() {
-                files.push(f);
-            }
-            let (old, new) = split_git_header(rest);
-            cur = Some(FileDiff {
-                old_path: old,
-                new_path: new,
+            c.flush_file();
+            let (old_path, new_path) = split_git_header(rest);
+            c.cur = Some(FileDiff {
+                old_path,
+                new_path,
                 status: FileStatus::Modified,
                 is_binary: false,
                 hunks: Vec::new(),
             });
-            continue;
+        } else if c.cur.is_none() || c.body_line(line) {
+            // Outside any file, or consumed as a hunk body line. Body lines
+            // take priority so a removed line starting with "-- " is not
+            // misread as a header.
+        } else if let Some(rest) = line.strip_prefix("@@ ") {
+            c.start_hunk(rest);
+        } else if let Some(file) = c.cur.as_mut() {
+            apply_header(file, line);
         }
+    }
+    c.flush_file();
+    c.files
+}
 
-        if cur.is_none() {
-            continue;
+/// Parser state: finished files, the file and hunk being read, and the next
+/// old/new line numbers.
+#[derive(Default)]
+struct Cursor {
+    files: Vec<FileDiff>,
+    cur: Option<FileDiff>,
+    hunk: Option<Hunk>,
+    old_no: u32,
+    new_no: u32,
+}
+
+impl Cursor {
+    fn flush_hunk(&mut self) {
+        if let (Some(f), Some(h)) = (self.cur.as_mut(), self.hunk.take()) {
+            f.hunks.push(h);
         }
+    }
 
-        // Inside a hunk, body lines take priority over header detection so a
-        // removed line that happens to start with "-- " is not misread.
-        if let Some(h) = hunk.as_mut() {
-            let in_body = old_no < h.old_start + h.old_len || new_no < h.new_start + h.new_len;
-            if in_body {
-                if let Some(t) = line.strip_prefix('+') {
-                    h.lines.push(DiffLine {
-                        kind: LineKind::Added,
-                        old_no: None,
-                        new_no: Some(new_no),
-                        text: t.to_string(),
-                    });
-                    new_no += 1;
-                    continue;
-                } else if let Some(t) = line.strip_prefix('-') {
-                    h.lines.push(DiffLine {
-                        kind: LineKind::Removed,
-                        old_no: Some(old_no),
-                        new_no: None,
-                        text: t.to_string(),
-                    });
-                    old_no += 1;
-                    continue;
-                } else if let Some(t) = line.strip_prefix(' ') {
-                    h.lines.push(DiffLine {
-                        kind: LineKind::Context,
-                        old_no: Some(old_no),
-                        new_no: Some(new_no),
-                        text: t.to_string(),
-                    });
-                    old_no += 1;
-                    new_no += 1;
-                    continue;
-                } else if line.is_empty() {
-                    // Some tools strip the leading space of empty context lines.
-                    h.lines.push(DiffLine {
-                        kind: LineKind::Context,
-                        old_no: Some(old_no),
-                        new_no: Some(new_no),
-                        text: String::new(),
-                    });
-                    old_no += 1;
-                    new_no += 1;
-                    continue;
-                }
-            }
-            if line.starts_with('\\') {
-                // "\ No newline at end of file"
-                continue;
-            }
+    fn flush_file(&mut self) {
+        self.flush_hunk();
+        if let Some(f) = self.cur.take() {
+            self.files.push(f);
         }
+    }
 
-        if let Some(rest) = line.strip_prefix("@@ ") {
-            flush_hunk(&mut cur, &mut hunk);
-            if let Some((os, ol, ns, nl)) = parse_hunk_header(rest) {
-                old_no = os;
-                new_no = ns;
-                hunk = Some(Hunk {
-                    old_start: os,
-                    old_len: ol,
-                    new_start: ns,
-                    new_len: nl,
-                    lines: Vec::new(),
-                });
-            }
-            continue;
+    fn start_hunk(&mut self, header: &str) {
+        self.flush_hunk();
+        if let Some((os, ol, ns, nl)) = parse_hunk_header(header) {
+            self.old_no = os;
+            self.new_no = ns;
+            self.hunk = Some(Hunk {
+                old_start: os,
+                old_len: ol,
+                new_start: ns,
+                new_len: nl,
+                lines: Vec::new(),
+            });
         }
+    }
 
-        let Some(file) = cur.as_mut() else { continue };
-        if line.starts_with("new file mode") {
-            file.status = FileStatus::Added;
+    /// Consume a hunk body line. Returns false if the line is not part of
+    /// the current hunk's body.
+    fn body_line(&mut self, line: &str) -> bool {
+        let Some(h) = self.hunk.as_mut() else {
+            return false;
+        };
+        if line.starts_with('\\') {
+            // "\ No newline at end of file"
+            return true;
+        }
+        let in_body =
+            self.old_no < h.old_start + h.old_len || self.new_no < h.new_start + h.new_len;
+        if !in_body {
+            return false;
+        }
+        let (kind, text) = if let Some(t) = line.strip_prefix('+') {
+            (LineKind::Added, t)
+        } else if let Some(t) = line.strip_prefix('-') {
+            (LineKind::Removed, t)
+        } else if let Some(t) = line.strip_prefix(' ') {
+            (LineKind::Context, t)
+        } else if line.is_empty() {
+            // Some tools strip the leading space of empty context lines.
+            (LineKind::Context, "")
+        } else {
+            return false;
+        };
+        let old_no = (kind != LineKind::Added).then_some(self.old_no);
+        let new_no = (kind != LineKind::Removed).then_some(self.new_no);
+        h.lines.push(DiffLine {
+            kind,
+            old_no,
+            new_no,
+            text: text.to_string(),
+        });
+        self.old_no += u32::from(old_no.is_some());
+        self.new_no += u32::from(new_no.is_some());
+        true
+    }
+}
+
+/// Apply an extended header line (`new file mode`, `rename from`, `---`, ...).
+fn apply_header(file: &mut FileDiff, line: &str) {
+    if line.starts_with("new file mode") {
+        file.status = FileStatus::Added;
+        file.old_path = None;
+    } else if line.starts_with("deleted file mode") {
+        file.status = FileStatus::Deleted;
+        file.new_path = None;
+    } else if let Some(p) = line.strip_prefix("rename from ") {
+        file.status = FileStatus::Renamed;
+        file.old_path = Some(unquote(p));
+    } else if let Some(p) = line.strip_prefix("rename to ") {
+        file.status = FileStatus::Renamed;
+        file.new_path = Some(unquote(p));
+    } else if let Some(p) = line.strip_prefix("copy from ") {
+        file.status = FileStatus::Copied;
+        file.old_path = Some(unquote(p));
+    } else if let Some(p) = line.strip_prefix("copy to ") {
+        file.status = FileStatus::Copied;
+        file.new_path = Some(unquote(p));
+    } else if line.starts_with("Binary files ") || line.starts_with("GIT binary patch") {
+        file.is_binary = true;
+    } else if let Some(p) = line.strip_prefix("--- ") {
+        apply_side(file, p, true);
+    } else if let Some(p) = line.strip_prefix("+++ ") {
+        apply_side(file, p, false);
+    }
+}
+
+fn apply_side(file: &mut FileDiff, p: &str, old: bool) {
+    match (p == "/dev/null", old) {
+        (true, true) => {
             file.old_path = None;
-        } else if line.starts_with("deleted file mode") {
-            file.status = FileStatus::Deleted;
+            file.status = FileStatus::Added;
+        }
+        (true, false) => {
             file.new_path = None;
-        } else if let Some(p) = line.strip_prefix("rename from ") {
-            file.status = FileStatus::Renamed;
-            file.old_path = Some(unquote(p));
-        } else if let Some(p) = line.strip_prefix("rename to ") {
-            file.status = FileStatus::Renamed;
-            file.new_path = Some(unquote(p));
-        } else if let Some(p) = line.strip_prefix("copy from ") {
-            file.status = FileStatus::Copied;
-            file.old_path = Some(unquote(p));
-        } else if let Some(p) = line.strip_prefix("copy to ") {
-            file.status = FileStatus::Copied;
-            file.new_path = Some(unquote(p));
-        } else if line.starts_with("Binary files ") || line.starts_with("GIT binary patch") {
-            file.is_binary = true;
-        } else if let Some(p) = line.strip_prefix("--- ") {
-            if p == "/dev/null" {
-                file.old_path = None;
-                file.status = FileStatus::Added;
-            } else if let Some(s) = strip_side(p, "a/") {
+            file.status = FileStatus::Deleted;
+        }
+        (false, true) => {
+            if let Some(s) = strip_side(p, "a/") {
                 file.old_path = Some(s);
             }
-        } else if let Some(p) = line.strip_prefix("+++ ") {
-            if p == "/dev/null" {
-                file.new_path = None;
-                file.status = FileStatus::Deleted;
-            } else if let Some(s) = strip_side(p, "b/") {
+        }
+        (false, false) => {
+            if let Some(s) = strip_side(p, "b/") {
                 file.new_path = Some(s);
             }
         }
     }
-    flush_hunk(&mut cur, &mut hunk);
-    if let Some(f) = cur.take() {
-        files.push(f);
-    }
-    files
 }
 
 fn strip_side(p: &str, prefix: &str) -> Option<String> {
@@ -246,39 +259,19 @@ fn strip_side(p: &str, prefix: &str) -> Option<String> {
 /// that follow correct it whenever it is ambiguous.
 fn split_git_header(rest: &str) -> (Option<String>, Option<String>) {
     if rest.starts_with('"') {
-        // Quoted paths: "a/x y" "b/x y"
-        let mut parts = Vec::new();
-        let mut chars = rest.char_indices().peekable();
-        while let Some((i, c)) = chars.next() {
-            if c == '"' {
-                let start = i;
-                let mut end = rest.len();
-                let mut escaped = false;
-                for (j, d) in chars.by_ref() {
-                    if escaped {
-                        escaped = false;
-                    } else if d == '\\' {
-                        escaped = true;
-                    } else if d == '"' {
-                        end = j + 1;
-                        break;
-                    }
-                }
-                parts.push(unquote(&rest[start..end]));
-            } else if c != ' ' {
-                let tail: String = std::iter::once(c)
-                    .chain(chars.by_ref().map(|(_, c)| c))
-                    .collect();
-                parts.push(tail);
-            }
-        }
-        let a = parts
-            .first()
-            .and_then(|p| p.strip_prefix("a/").map(str::to_string));
-        let b = parts
-            .get(1)
-            .and_then(|p| p.strip_prefix("b/").map(str::to_string));
-        return (a, b);
+        // Quoted paths: "a/x y" "b/x y" (the second may be unquoted).
+        let first_len = quoted_len(rest);
+        let first = unquote(&rest[..first_len]);
+        let second = rest[first_len..].trim_start();
+        let second = if second.starts_with('"') {
+            unquote(&second[..quoted_len(second)])
+        } else {
+            second.to_string()
+        };
+        return (
+            first.strip_prefix("a/").map(str::to_string),
+            second.strip_prefix("b/").map(str::to_string),
+        );
     }
     // Symmetric split: "a/<p> b/<p>" where both halves are equal length.
     let bytes = rest.len();
@@ -300,6 +293,21 @@ fn split_git_header(rest: &str) -> (Option<String>, Option<String>) {
     }
 }
 
+/// Byte length of the quoted string at the start of `s` (which begins with
+/// `"`), including both quotes; the whole string if it is unterminated.
+fn quoted_len(s: &str) -> usize {
+    let mut escaped = false;
+    for (j, d) in s.char_indices().skip(1) {
+        match (escaped, d) {
+            (true, _) => escaped = false,
+            (false, '\\') => escaped = true,
+            (false, '"') => return j + 1,
+            _ => {}
+        }
+    }
+    s.len()
+}
+
 /// Undo git's C-style path quoting (`"a/sp\303\244ce"`).
 pub fn unquote(p: &str) -> String {
     let Some(inner) = p.strip_prefix('"').and_then(|s| s.strip_suffix('"')) else {
@@ -308,32 +316,27 @@ pub fn unquote(p: &str) -> String {
     let mut out: Vec<u8> = Vec::with_capacity(inner.len());
     let b = inner.as_bytes();
     let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'\\' && i + 1 < b.len() {
-            let c = b[i + 1];
-            match c {
-                b'n' => out.push(b'\n'),
-                b't' => out.push(b'\t'),
-                b'"' => out.push(b'"'),
-                b'\\' => out.push(b'\\'),
-                b'0'..=b'7' if i + 4 <= b.len() => {
-                    let oct = std::str::from_utf8(&b[i + 1..i + 4]).unwrap_or("x");
-                    match u8::from_str_radix(oct, 8) {
-                        Ok(v) => {
-                            out.push(v);
-                            i += 4;
-                            continue;
-                        }
-                        Err(_) => out.push(c),
-                    }
-                }
-                other => out.push(other),
-            }
-            i += 2;
-        } else {
-            out.push(b[i]);
+    while let Some(&byte) = b.get(i) {
+        let Some(&c) = b.get(i + 1).filter(|_| byte == b'\\') else {
+            out.push(byte);
             i += 1;
+            continue;
+        };
+        let octal = b
+            .get(i + 1..i + 4)
+            .and_then(|d| std::str::from_utf8(d).ok())
+            .and_then(|d| u8::from_str_radix(d, 8).ok());
+        match (c, octal) {
+            (b'0'..=b'7', Some(v)) => {
+                out.push(v);
+                i += 4;
+                continue;
+            }
+            (b'n', _) => out.push(b'\n'),
+            (b't', _) => out.push(b'\t'),
+            (other, _) => out.push(other),
         }
+        i += 2;
     }
     String::from_utf8_lossy(&out).into_owned()
 }
@@ -365,6 +368,18 @@ mod tests {
         assert_eq!(parse_hunk_header("-5 +5 @@"), Some((5, 1, 5, 1)));
         assert_eq!(parse_hunk_header("-0,0 +1,2 @@"), Some((0, 0, 1, 2)));
         assert_eq!(parse_hunk_header("garbage"), None);
+    }
+
+    #[test]
+    fn quoted_headers() {
+        assert_eq!(
+            split_git_header("\"a/sp ace.rs\" \"b/sp ace.rs\""),
+            (Some("sp ace.rs".into()), Some("sp ace.rs".into()))
+        );
+        assert_eq!(
+            split_git_header("a/x.rs b/x.rs"),
+            (Some("x.rs".into()), Some("x.rs".into()))
+        );
     }
 
     #[test]

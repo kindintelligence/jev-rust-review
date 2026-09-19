@@ -237,8 +237,14 @@ pub fn rust_units(
         .collect();
     let anchors = removed_anchors(&input.diff.hunks);
 
-    // Touch points: added lines, plus the position of pure removals.
-    let mut touch: BTreeSet<u32> = added.clone();
+    // Touch points: non-blank added lines, plus the position of pure
+    // removals. A blank added line carries nothing to review on its own.
+    let is_blank = |n: u32| {
+        lines
+            .get(n as usize - 1)
+            .is_none_or(|l| l.trim().is_empty())
+    };
+    let mut touch: BTreeSet<u32> = added.iter().copied().filter(|&n| !is_blank(n)).collect();
     for &a in anchors.keys() {
         touch.insert(a.clamp(1, n_lines));
     }
@@ -262,7 +268,12 @@ pub fn rust_units(
                     headers.insert((s.start, s.end), h.clone());
                 }
             }
-            None => regions.push((t.saturating_sub(WINDOW).max(1), (t + WINDOW).min(n_lines))),
+            None => {
+                // Outside any item (imports, attributes) a parsed file needs
+                // little context; without a parse, take more.
+                let w = if spans.is_some() { 2 } else { WINDOW };
+                regions.push((t.saturating_sub(w).max(1), (t + w).min(n_lines)))
+            }
         }
     }
     let regions = merge(regions, 1);
@@ -317,10 +328,9 @@ pub fn rust_units(
                 continue;
             }
             let role = if input.role == Role::Library || input.role == Role::Binary {
-                let all_test = !changed.is_empty()
-                    && changed
-                        .iter()
-                        .all(|l| input.test_ranges.iter().any(|(a, b)| a <= l && l <= b));
+                let mut substantive = changed.iter().filter(|&&l| !is_blank(l)).peekable();
+                let all_test = substantive.peek().is_some()
+                    && substantive.all(|l| input.test_ranges.iter().any(|(a, b)| a <= l && l <= b));
                 if all_test { Role::Test } else { input.role }
             } else {
                 input.role
@@ -478,7 +488,11 @@ pub fn synthetic_added(path: &str, content: &str) -> FileDiff {
                     kind: LineKind::Added,
                     old_no: None,
                     new_no: Some(i),
-                    text: lines[i as usize - 1].to_string(),
+                    text: lines
+                        .get(i as usize - 1)
+                        .copied()
+                        .unwrap_or_default()
+                        .to_string(),
                 })
                 .collect(),
         }],

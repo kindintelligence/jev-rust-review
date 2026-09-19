@@ -108,22 +108,12 @@ impl ProjectInfo {
 
         let root_manifest = read_toml(&root.join("Cargo.toml"));
         let mut dirs: Vec<PathBuf> = Vec::new();
-        let mut workspace_deps = toml::Table::new();
         if let Some(m) = &root_manifest {
             if let Some(ws) = m.get("workspace").and_then(|w| w.as_table()) {
                 info.is_workspace = true;
-                if let Some(d) = ws.get("dependencies").and_then(|d| d.as_table()) {
-                    workspace_deps = d.clone();
-                }
-                let excludes: Vec<String> = str_array(ws.get("exclude"));
-                for pat in str_array(ws.get("members")) {
-                    for d in expand_member(root, &pat) {
-                        let rel = rel_dir(root, &d);
-                        if !excludes.contains(&rel) && !dirs.contains(&d) {
-                            info.workspace_members.push(rel);
-                            dirs.push(d);
-                        }
-                    }
+                for (rel, d) in workspace_member_dirs(root, ws) {
+                    info.workspace_members.push(rel);
+                    dirs.push(d);
                 }
             }
             if m.get("package").is_some() && !dirs.iter().any(|d| d == root) {
@@ -131,7 +121,7 @@ impl ProjectInfo {
             }
         }
         for d in dirs {
-            if let Some(c) = load_crate(root, &d, &workspace_deps) {
+            if let Some(c) = load_crate(root, &d) {
                 info.crates.push(c);
             }
         }
@@ -223,7 +213,7 @@ pub fn test_line_ranges(src: &str) -> Vec<(u32, u32)> {
             if p.is_ident("test") {
                 return true;
             }
-            if p.segments.len() == 2 && p.segments[1].ident == "test" {
+            if p.segments.len() == 2 && p.segments.last().is_some_and(|s| s.ident == "test") {
                 // #[tokio::test], #[async_std::test], ...
                 return true;
             }
@@ -258,6 +248,23 @@ pub fn test_line_ranges(src: &str) -> Vec<(u32, u32)> {
         }
     }
     walk(&file.items, &mut out);
+    out
+}
+
+/// Workspace member directories (repo-relative name, absolute path), with
+/// `exclude` applied and duplicates removed.
+fn workspace_member_dirs(root: &Path, ws: &toml::Table) -> Vec<(String, PathBuf)> {
+    let excludes: Vec<String> = str_array(ws.get("exclude"));
+    let mut out: Vec<(String, PathBuf)> = Vec::new();
+    let candidates = str_array(ws.get("members"))
+        .into_iter()
+        .flat_map(|pat| expand_member(root, &pat));
+    for d in candidates {
+        let rel = rel_dir(root, &d);
+        if !excludes.contains(&rel) && !out.iter().any(|(_, x)| x == &d) {
+            out.push((rel, d));
+        }
+    }
     out
 }
 
@@ -323,7 +330,7 @@ fn expand_member(root: &Path, pat: &str) -> Vec<PathBuf> {
     }
 }
 
-fn load_crate(root: &Path, dir: &Path, workspace_deps: &toml::Table) -> Option<CrateInfo> {
+fn load_crate(root: &Path, dir: &Path) -> Option<CrateInfo> {
     let m = read_toml(&dir.join("Cargo.toml"))?;
     let pkg = m.get("package")?.as_table()?;
     let inherited = |key: &str| -> Option<String> {
@@ -357,7 +364,6 @@ fn load_crate(root: &Path, dir: &Path, workspace_deps: &toml::Table) -> Option<C
                     .and_then(|p| p.as_str())
                     .unwrap_or(k.as_str());
                 deps.insert(real.to_string());
-                let _ = workspace_deps;
             }
         }
     };
@@ -441,7 +447,13 @@ fn detect_exclusive_features(dir: &Path, features: &[String]) -> Vec<Vec<String>
             if !l.contains("cfg") {
                 continue;
             }
-            let window = lines[i..(i + 3).min(lines.len())].join(" ");
+            let window = lines
+                .iter()
+                .skip(i)
+                .take(3)
+                .copied()
+                .collect::<Vec<_>>()
+                .join(" ");
             if !window.contains("compile_error!") {
                 continue;
             }

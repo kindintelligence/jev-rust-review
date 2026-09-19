@@ -175,10 +175,23 @@ pub struct Git {
     root: PathBuf,
 }
 
+/// The only process spawn site in the crate: `git` with an argument vector,
+/// never a shell. Callers pass validated arguments only.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the single audited subprocess door; see clippy.toml"
+)]
+fn git_command() -> Command {
+    let mut c = Command::new("git");
+    c.env("GIT_TERMINAL_PROMPT", "0")
+        .env_remove("GIT_EXTERNAL_DIFF");
+    c
+}
+
 impl Git {
     /// Open the repository containing `path`.
     pub fn open(path: &Path) -> Result<Git> {
-        let out = Command::new("git")
+        let out = git_command()
             .arg("-C")
             .arg(path)
             .args(["rev-parse", "--show-toplevel"])
@@ -202,7 +215,7 @@ impl Git {
     }
 
     fn run(&self, args: &[&str]) -> Result<Vec<u8>> {
-        let out = Command::new("git")
+        let out = git_command()
             .arg("-C")
             .arg(&self.root)
             // Neutralise user config that would change diff output.
@@ -217,8 +230,6 @@ impl Git {
                 "color.ui=false",
             ])
             .args(args)
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .env_remove("GIT_EXTERNAL_DIFF")
             .output()
             .map_err(|e| Error::Git(format!("cannot run git: {e}")))?;
         if !out.status.success() {
