@@ -376,6 +376,10 @@ async fn claude(
         .env("JEV_RUST_REVIEW_BIN", root.join("target/release").join(exe))
         .env("JEV_RUST_REVIEW_CARGO_TARGET_DIR", target_dir)
         .env("CARGO_TARGET_DIR", target_dir)
+        // Every run reviews a fresh temporary repository. With a templated
+        // `build.build-dir` in the user's cargo config, each one would get
+        // its own build directory and the matrix would fill the disk.
+        .env("CARGO_BUILD_BUILD_DIR", target_dir)
         .env_remove("CLAUDE_PROJECT_DIR")
         .stdin(std::process::Stdio::null())
         .kill_on_drop(true);

@@ -384,6 +384,9 @@ async fn cargo(run: Cargo<'_>, args: &[String]) -> Result<ToolOutput, ToolError>
     let mut command = tokio::process::Command::new("cargo");
     if let Some(dir) = target_dir {
         command.env("CARGO_TARGET_DIR", dir);
+        // A user's `build.build-dir` sends intermediate artifacts elsewhere,
+        // one directory per workspace path. Keep them with the target dir.
+        command.env("CARGO_BUILD_BUILD_DIR", dir);
     }
     let child = command
         .args(args)

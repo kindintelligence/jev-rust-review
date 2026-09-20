@@ -33,6 +33,7 @@ Claude                               = reasoning, root cause, fix (skill + rust-
 | CLI | `claude plugin validate --help`, `claude --help` (v2.1.277) | `claude plugin validate <path>`, `claude --plugin-dir <path>` |
 | Dioxus | crates.io, [dioxuslabs.com/learn/0.7](https://dioxuslabs.com/learn/0.7/) | 0.7.10 stable; `ReadOnlySignal` deprecated alias of `ReadSignal`; stores, `use_action`, `use_loader`, `#[get]/#[post]` server fns |
 | Axum / Tokio | docs.rs | axum 0.8.9 (`/{id}` paths; `/:id` panics), tokio 1.53.1 |
+| Library behaviour stated as facts (2026-09-21) | docs.rs: tokio `sync::Notify`, `sync::mpsc::Sender::send`, `task::JoinHandle`, `io::BufWriter`; axum `Router::layer` and `Router::route_layer`; std `io::BufWriter`, `Iterator::size_hint` | Each fact in `src/facts.rs` restates its page. `notify_waiters` stores no permit, and a `Notified` future receives wakeups from the moment it is created. A cancelled `send` drops its message. Both layer calls cover only routes that already exist |
 | Codex | [Codex MCP docs](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) | `[mcp_servers.<name>]` with `command`, `args`, `env`, `env_vars`, `startup_timeout_sec` (default 10) |
 
 ## 2. Where reality differs from the brief
@@ -91,7 +92,7 @@ The output is compact JSON text:
 - `project`: crates, workspace members, policy files, toolchain and `tests`.
   - Each crate has its name, directory, edition, `rust_version`, kind, `async_runtimes`, profiles and features. It also has `mutually_exclusive_features`.
   - `tests` holds `diff_touches_tests` and the lists of test and non-test units. Code computes it from file roles and `#[cfg(test)]`/`#[test]` spans. It is a fact about the diff, not a Jev question.
-- `flagged`: unit, dimension, question, `check`, signal and threshold, strongest first. `check` is the question itself, reworded to be about the unit. A flag is a question for the agent to answer by reading the code, and `reading_flags` says so in the output, because a smaller model reported a bare flag as a finding (§10).
+- `flagged`: unit, dimension, question, `check`, signal and threshold, strongest first. `check` is the question itself, reworded to be about the unit. A flag is a question for the agent to answer by reading the code, and `reading_flags` says so in the output, because a smaller model reported a bare flag as a finding (§10). `reading_flags` also says that flags set the order of reading and not its limits: a smaller model reported nothing at all whenever nothing was flagged (§10).
 - `references`: the dimension and profile reference files to load.
 - `units`: for each unit, `id`, `file`, `lines`, `changed_lines`, `role` and `status`. For each question: `dimension`, `primitive`, `answer`, `probabilities?`, `confidence?`, `signal`, `threshold` and `flagged`.
 - `cargo_facts`: deterministic manifest and lockfile findings:
@@ -133,6 +134,8 @@ The output for each finding:
 - `severity_agrees`;
 - `category`: the Choice;
 - `verdict` (§6).
+
+Fact gates read `related_code` as well as the excerpt, because the call whose documented behaviour decides a claim is often in a helper.
 
 ## 3a. Tools answer what tools can answer
 
@@ -211,7 +214,7 @@ A pattern using `\s*` can reach across a line break into the next marker. `ARITH
 
 `questions::TOOL_OWNED` lists the lints of the deleted questions with their dimension, so that a finding about a guard across `.await` is still recognised as a repeat of `await_holding_lock`.
 
-Core questions (40):
+Core questions (41):
 
 | Dimension | Questions |
 |---|---|
@@ -220,7 +223,7 @@ Core questions (40):
 | type_design | `loose_types` |
 | error_handling | `swallowed`, `panic`, `lossy`, `drop_panic` |
 | async | `blocking_call`, `select_cancellation`, `detached_task`, `unbounded`, `sequential_awaits` |
-| concurrency | `check_then_act`, `atomics`, `unsafe_send_sync`, `lock_scope` |
+| concurrency | `check_then_act`, `lost_wakeup`, `atomics`, `unsafe_send_sync`, `lock_scope` |
 | unsafe | `memory_access`, `aliasing`, `transmute` |
 | ffi | `ownership`, `pointers_and_strings`, `unwind` |
 | performance | `repeated_work` |
@@ -232,12 +235,12 @@ Core questions (40):
 | testing | `weak_assertion` |
 | cargo (manifest units) | `manifest_risk` |
 
-Profile questions (17):
+Profile questions (18):
 
 | Profile | Questions |
 |---|---|
 | tokio | `runtime_nesting`, `spawn_blocking_misuse`, `no_shutdown`, `select_not_cancel_safe`, `blocking_in_async`, `async_mutex_unneeded` |
-| axum | `error_exposure`, `layer_order`, `extension_state`, `blocking_handler` |
+| axum | `error_exposure`, `layer_order`, `route_after_layer`, `extension_state`, `blocking_handler` |
 | dioxus | `guard_across_await`, `read_write_overlap`, `effect_loop`, `hook_rules`, `stale_capture`, `server_fn_trust`, `untracked_dependency` |
 
 **Documentation facts** live in `src/facts.rs`. Each is a short, literal fact from official docs. One example lists which futures are not cancellation safe in `tokio::select!`. A fact joins a request's `state` when its gate matches the code, up to five per request. TypeSafe's Models page recommends putting reference material in `state`. In the first eval, the `select!` facts raised Jev's support for a true cancellation claim from 0.17 to 0.74.
@@ -282,18 +285,19 @@ A finding names a dimension, not a question, so verification uses every lint of 
 
 - `support` (Choice): `supported`, `refuted` or `insufficient_context`. The report bar applies to `P(supported)`. It is 0.70, or 0.80 for unsafe, idiom and type_design.
 - `severity` (Score): levels run from 0 (low) to 3 (critical). `SEVERITY_HIGH_FROM` is 2, and `p_high_or_above` is the mass on high and critical.
-- `category` (Choice): `real_defect`, `debatable_tradeoff` or `style_preference`.
+- `category` (Choice): `real_defect`, `remote_risk`, `debatable_tradeoff` or `style_preference`. `remote_risk` is a claim that is true only under a condition the code gives no reason to expect: a lock poisoned by an earlier panic, a sum of ordinary counts overflowing, a local file too large for memory.
 
 The verdict is the first rule that matches:
 
 0. `tool_reported` if a tool already reported the defect on these lines (above). Jev is not asked.
 1. `dismiss` if `support` chose `refuted`. Also `dismiss` if `category` chose `style_preference` with confidence of at least `STYLE_DISMISS_MIN_CONFIDENCE` (0.50). A narrower style win falls through to the later rules.
-2. `report` if `P(supported)` reaches the report bar and the category is `real_defect`. A `debatable_tradeoff` also counts if `P(real_defect)` is at least `TRADEOFF_REAL_DEFECT_BAR` (0.40).
-3. `insufficient_context` if `support` chose `insufficient_context`. **This is not a refutation.** Cross-file findings, such as lock ordering or semver breaks, land here. The skill keeps them when Claude's own confidence is High. It says Jev could not verify them from local context.
-4. `dismiss` if `P(supported)` is below 0.40.
-5. `uncertain` otherwise.
+2. `not_material` if `category` chose `remote_risk` with confidence of at least `REMOTE_RISK_MIN_CONFIDENCE` (0.50). The claim is true and not worth the author's time. The skill leaves it out of the report unless the agent can name the realistic input that reaches the failure.
+3. `report` if `P(supported)` reaches the report bar and the category is `real_defect`. A `debatable_tradeoff`, or a narrow `remote_risk`, also counts if `P(real_defect)` is at least `TRADEOFF_REAL_DEFECT_BAR` (0.40).
+4. `insufficient_context` if `support` chose `insufficient_context`. **This is not a refutation.** Cross-file findings, such as lock ordering or semver breaks, land here. The skill keeps them when Claude's own confidence is High. It says Jev could not verify them from local context.
+5. `dismiss` if `P(supported)` is below 0.40.
+6. `uncertain` otherwise.
 
-**Jev cannot refute what it was not shown.** When `unseen` is not empty, a claim Jev did not confirm is `insufficient_context`: a `refuted` choice, a low `P(supported)` and `uncertain` all map to it. Agreement still reports, and a confident `style_preference` still dismisses, because that judges the claim and not the code.
+**Jev cannot refute what it was not shown.** When `unseen` is not empty, a claim Jev did not confirm is `insufficient_context`: a `refuted` choice, a low `P(supported)` and `uncertain` all map to it. Agreement still reports. A confident `style_preference` still dismisses and a confident `remote_risk` is still `not_material`, because both judge the claim and not the code.
 
 **A verdict is a second opinion, not a gate.** Only `tool_reported` removes a finding, because that check is code. Until 2026-09-20 the skill dropped a finding on `dismiss`, and on `uncertain` without deterministic evidence. The first three-mode run (§10) showed the cost: in 14 of the 15 runs where the full pipeline missed the seeded bug, Claude had found it and Jev had not confirmed it. Each of those bugs depends on something outside the excerpt Jev reads: another file, or the documented behaviour of a library. The skill now treats `uncertain` and `dismiss` as a reason to re-read the code for what Jev may have seen. The agent drops the finding if it finds that, and keeps it, with Jev's number shown, if it can still state the concrete failure with High confidence.
 
@@ -433,7 +437,32 @@ By the rules: Jev meets the floor on Haiku (rule 1) and adds 4 bugs of 47, above
 - **Related definitions** lifted Jev's own verification (16 of 19 true claims, from 12). In the headless runs Jev still answered `dismiss` on 11 seeded candidates, against 12 before.
 - **Flags as questions** did not stop the noise. Other entries rose from 15 to 34 with Jev. Many restate a flag, and Jev's verification confirms them because they are true and trivial.
 
-Still open: `notify_lost_wakeup` (0 of 3 with Jev, 3 of 3 without) and `route_added_after_layer` rest on documented library behaviour; more entries in `facts.rs` would address them. Verification has no notion of "true but not worth reporting". Sonnet 5 has not been re-run with these changes.
+Left open by that run: `notify_lost_wakeup` (0 of 3 with Jev, 3 of 3 without) and `route_added_after_layer`; verification had no notion of "true but not worth reporting"; a flag drew Haiku off the seeded bug on `error_flattened_to_string`; and Sonnet 5 had not been re-run. The next part covers all four.
+
+**Fourth change: the open items (2026-09-21).** The owner asked for all four to be fixed. Reading the matrix 4 cells first corrected the diagnosis of the first one.
+
+| Open item | What the cells showed | Change |
+|---|---|---|
+| Two bugs lost to library behaviour | The cause was not mainly missing facts. In all 9 Haiku runs where triage flagged nothing (`notify_lost_wakeup`, `route_added_after_layer`, `bufwriter_never_flushed`), the review reported nothing. In 7 of them it never raised a candidate, and in the other 2 Jev answered `dismiss`. Step 5 of the skill said "inspect flagged code", so no flag meant no reading | Flags set the order of reading, not its limits. The skill, the agent prompt and `reading_flags` say to review every changed unit, flagged first (§3, skill steps 3 and 5) |
+| The same two bugs, in Jev's own stages | Verification answered `dismiss` and `uncertain` on true claims about `notify_waiters`, `route_layer` and `Sender::send` | Six facts from the tokio, axum and std documentation (§1, §4). Fact gates read `related_code`. Two questions for defect classes that had none: `concurrency.lost_wakeup` and `axum.route_after_layer` |
+| Noise: true but trivial entries | Verification confirmed "unwrap on a poisoned mutex can panic" because it is true | A `remote_risk` category and a `not_material` verdict (§6). `error_handling.panic`, `correctness.overflow` and `security.unbounded_input` say what does not count. Three clean fixtures carry true but trivial bait claims |
+| A flag pulls the model to another claim | On `error_flattened_to_string` only `security.unbounded_input` flagged. `error_handling.lossy` answered 0.18 on the textbook case, because its wording let "the text survives" count as kept | `lossy` now says that formatting an error into a `String` loses its type, kind and source. The skill says a flag is one question about a unit, not a description of it |
+| Haiku invents dimension names (`logic`, `access_control`), which the grader cannot count | Seen in the list for a person to judge | The skill lists the 16 names, and a test keeps the list equal to `Dimension::ALL` |
+
+**This is tuning on known fixtures, and it is recorded as such.** The facts and the two questions were written from the library documentation, and they cover more than the fixtures need (`JoinHandle`, `BufWriter`, `size_hint`). They were still written after seeing which fixtures failed. So the gain on `notify_lost_wakeup`, `route_added_after_layer` and `select_drops_send` shows that the mechanism works. It does not show how often Jev will know the library behaviour behind a bug it has not seen. The review-every-unit change and `not_material` do not depend on any fixture.
+
+Measured on Jev's two stages alone, before any Claude run, on 19 bugs and 10 clean fixtures:
+
+| | Before | After |
+|---|---|---|
+| Triage flagged the bug in an expected dimension | 14/19 | 18/19 |
+| True claims verified as `report` | 16/19 | 19/19 |
+| Bait claims verified as `report` | 0/7 | 0/10 |
+| True but trivial bait claims judged `not_material` | no such verdict | 3/3 |
+
+The rules for judging the re-runs are rules 1 to 6 above, unchanged. Both models are run again in modes C and J, because the skill changes reach both modes.
+
+FOURTH_RESULT_PLACEHOLDER
 
 ## 11. Progress checklist
 
