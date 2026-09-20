@@ -17,11 +17,11 @@
           "type": "score",
           "score": 0.02,
           "probabilities": {
-            "0": 0.98,
-            "1": 0.02,
+            "0": 0.99,
+            "1": 0.01,
             "2": 0.0
           },
-          "confidence": 0.96,
+          "confidence": 0.97,
           "legend": {}
         },
         "api.breaking_change": {
@@ -33,24 +33,24 @@
         "input_tokens": 0
       }
     },
-    "fb0d81ea5fb691d5": {
+    "4c7818ea5e365f2d": {
       "model": "jev-1.13.0",
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.57
+          "noul": 0.6
         },
         "correctness.overflow": {
           "type": "noul",
-          "noul": 0.3
+          "noul": 0.21
         },
         "correctness.drop_order": {
           "type": "noul",
-          "noul": 0.14
+          "noul": 0.17
         },
         "error_handling.swallowed": {
           "type": "noul",
-          "noul": 0.67
+          "noul": 0.73
         },
         "async.blocking_call": {
           "type": "noul",
@@ -58,7 +58,7 @@
         },
         "async.detached_task": {
           "type": "noul",
-          "noul": 0.05
+          "noul": 0.04
         },
         "async.unbounded": {
           "type": "noul",
@@ -66,33 +66,33 @@
         },
         "async.sequential_awaits": {
           "type": "noul",
-          "noul": 0.61
+          "noul": 0.54
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.31,
+          "score": 0.35,
           "probabilities": {
-            "0": 0.71,
-            "1": 0.28,
+            "0": 0.67,
+            "1": 0.32,
             "2": 0.01
           },
-          "confidence": 0.54,
+          "confidence": 0.47,
           "legend": {}
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.13
+          "noul": 0.14
         },
         "tokio.no_shutdown": {
           "type": "noul",
-          "noul": 0.15
+          "noul": 0.2
         }
       },
       "usage": {
         "input_tokens": 0
       }
     },
-    "e67f0ed79e0b278b": {
+    "17f506a3566fdbb3": {
       "model": "jev-1.13.0",
       "answers": {
         "support": {
@@ -100,31 +100,32 @@
           "choice": "refuted",
           "probabilities": {
             "insufficient_context": 0.0,
-            "refuted": 0.96,
-            "supported": 0.04
+            "refuted": 0.98,
+            "supported": 0.02
           },
-          "confidence": 0.94
+          "confidence": 0.97
         },
         "severity": {
           "type": "score",
-          "score": 1.99,
+          "score": 1.82,
           "probabilities": {
-            "0": 0.02,
-            "1": 0.19,
-            "2": 0.57,
-            "3": 0.22
+            "0": 0.03,
+            "1": 0.26,
+            "2": 0.56,
+            "3": 0.15
           },
-          "confidence": 0.56
+          "confidence": 0.53
         },
         "category": {
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
-            "debatable_tradeoff": 0.29,
-            "real_defect": 0.71,
-            "style_preference": 0.0
+            "debatable_tradeoff": 0.13,
+            "real_defect": 0.46,
+            "remote_risk": 0.4,
+            "style_preference": 0.01
           },
-          "confidence": 0.56
+          "confidence": 0.28
         }
       },
       "usage": {

@@ -1,0 +1,9 @@
+description = "the operator's own config file is read whole; the unbounded-read claim is true and no attacker reaches it"
+file = "src/settings.rs"
+
+[claim]
+dimension = "security"
+start = "let text = std::fs::read_to_string(default_path())?;"
+end = "let text = std::fs::read_to_string(default_path())?;"
+text = "load_port reads the whole config file with read_to_string and no size limit, so a very large file would exhaust memory."
+severity = "medium"

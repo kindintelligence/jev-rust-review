@@ -1,0 +1,9 @@
+description = "a sum of basket quantities; the overflow claim is true in principle and not worth a review comment"
+file = "src/basket.rs"
+
+[claim]
+dimension = "correctness"
+start = "lines.iter().map(|line| line.quantity).sum()"
+end = "lines.iter().map(|line| line.quantity).sum()"
+text = "item_count sums u32 quantities with sum(), which can overflow if the quantities add up to more than u32::MAX."
+severity = "medium"

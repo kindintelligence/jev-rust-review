@@ -138,9 +138,9 @@ async fn corpus_gates_cover_expected_dimensions() {
     );
 }
 
-/// In both, the type that opens the gate (`Mutex`, `AtomicBool`) is declared
-/// in a file the change does not touch.
-const KNOWN_UNGATED: &[&str] = &["lock_order_inversion", "notify_lost_wakeup"];
+/// The type that opens the gate (`Mutex`) is declared in a file the change
+/// does not touch.
+const KNOWN_UNGATED: &[&str] = &["lock_order_inversion"];
 
 /// Question-id prefixes that count toward a dimension (profiles included).
 fn dimension_prefixes(d: &str) -> Vec<String> {
@@ -188,6 +188,7 @@ struct Metrics {
     true_claims_insufficient: usize,
     bait_claims_reported: usize,
     bait_claims_dismissed: usize,
+    bait_claims_not_material: usize,
     input_tokens: u64,
     requests: usize,
 }
@@ -222,6 +223,7 @@ impl Metrics {
             self.clean_bait_dim_flag += usize::from(flagged_dims.contains(&f.spec.claim.dimension));
             self.bait_claims_reported += usize::from(verdict == "report");
             self.bait_claims_dismissed += usize::from(verdict == "dismiss");
+            self.bait_claims_not_material += usize::from(verdict == "not_material");
         }
         let mut dims = flagged_dims.clone();
         dims.dedup();
@@ -248,7 +250,7 @@ impl Metrics {
              clean fixtures with any triage flag: {}/{} ({:.0}%)\n\
              clean fixtures flagged in the bait dimension: {}/{} ({:.0}%)\n\
              true claims verified as `report`: {}/{} ({:.0}%), insufficient_context: {}, dismissed: {}\n\
-             bait claims verified as `report` (false positives): {}/{} ({:.0}%), dismissed: {}\n\
+             bait claims verified as `report` (false positives): {}/{} ({:.0}%), dismissed: {}, not_material: {}\n\
              Jev requests: {}, input tokens: {}, cost: ${:.5}",
             self.buggy_flagged,
             self.buggy,
@@ -268,6 +270,7 @@ impl Metrics {
             self.clean,
             pct(self.bait_claims_reported, self.clean),
             self.bait_claims_dismissed,
+            self.bait_claims_not_material,
             self.requests,
             self.input_tokens,
             self.input_tokens as f64 * jev_rust_review::config::USD_PER_INPUT_TOKEN,
@@ -341,12 +344,12 @@ async fn recorded_answers_meet_targets() {
         metrics.add(f, &ev, &vr);
     }
     eprintln!("{}\n{}", metrics.rows.join("\n"), metrics.summary());
-    // Floors, measured against jev-1.13.0 on 2026-09-20 (see README "Eval
+    // Floors, measured against jev-1.13.0 on 2026-09-21 (see README "Eval
     // results"). The corpus now holds only bugs the tools miss, many of
     // which span functions or files, so these are lower than they were on
     // the first corpus. They record what Jev does; they were not tuned.
     assert!(
-        metrics.buggy_flagged >= 14,
+        metrics.buggy_flagged >= 18,
         "triage recall regressed: {}/{}",
         metrics.buggy_flagged,
         metrics.buggy
@@ -356,13 +359,17 @@ async fn recorded_answers_meet_targets() {
         "a bait claim passed verification"
     );
     assert!(
-        metrics.true_claims_reported >= 16,
+        metrics.true_claims_reported >= 19,
         "fewer true claims verified: {}/{}",
         metrics.true_claims_reported,
         metrics.buggy
     );
+    assert_eq!(
+        metrics.bait_claims_not_material, 3,
+        "a true but trivial bait claim was not judged `not_material`"
+    );
     assert!(
-        metrics.true_claims_dismissed <= 1,
+        metrics.true_claims_dismissed == 0,
         "more true claims dismissed: {}",
         metrics.true_claims_dismissed
     );

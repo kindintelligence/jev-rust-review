@@ -34,11 +34,11 @@
         },
         "correctness.bounds": {
           "type": "noul",
-          "noul": 0.03
+          "noul": 0.04
         },
         "error_handling.panic": {
           "type": "noul",
-          "noul": 0.15
+          "noul": 0.14
         },
         "idiom.clarity": {
           "type": "score",
@@ -61,7 +61,7 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.3
+          "noul": 0.33
         },
         "type_design.loose_types": {
           "type": "noul",
@@ -69,18 +69,18 @@
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.05,
+          "score": 0.06,
           "probabilities": {
             "0": 0.95,
             "1": 0.05,
             "2": 0.0
           },
-          "confidence": 0.93,
+          "confidence": 0.91,
           "legend": {}
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.11
+          "noul": 0.1
         }
       },
       "usage": {
@@ -102,24 +102,25 @@
         },
         "severity": {
           "type": "score",
-          "score": 0.98,
+          "score": 1.06,
           "probabilities": {
-            "0": 0.4,
-            "1": 0.22,
-            "2": 0.37,
+            "0": 0.38,
+            "1": 0.19,
+            "2": 0.42,
             "3": 0.01
           },
-          "confidence": 0.02
+          "confidence": 0.03
         },
         "category": {
           "type": "choice",
-          "choice": "real_defect",
+          "choice": "remote_risk",
           "probabilities": {
-            "debatable_tradeoff": 0.29,
-            "real_defect": 0.66,
-            "style_preference": 0.05
+            "debatable_tradeoff": 0.02,
+            "real_defect": 0.19,
+            "remote_risk": 0.78,
+            "style_preference": 0.01
           },
-          "confidence": 0.49
+          "confidence": 0.71
         }
       },
       "usage": {

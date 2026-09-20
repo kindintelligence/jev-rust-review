@@ -1,0 +1,9 @@
+description = "a new reader takes the same std Mutex the way the rest of the type does; the claim is true but trivial"
+file = "src/hits.rs"
+
+[claim]
+dimension = "error_handling"
+start = "let by_page = self.by_page.lock().unwrap();"
+end = "let by_page = self.by_page.lock().unwrap();"
+text = "count calls unwrap on by_page.lock(), which panics if the mutex was poisoned by a panic in another thread."
+severity = "medium"

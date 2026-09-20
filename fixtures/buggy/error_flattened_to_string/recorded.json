@@ -21,7 +21,7 @@
             "1": 0.02,
             "2": 0.0
           },
-          "confidence": 0.97,
+          "confidence": 0.96,
           "legend": {}
         },
         "api.breaking_change": {
@@ -42,7 +42,7 @@
         },
         "error_handling.lossy": {
           "type": "noul",
-          "noul": 0.19
+          "noul": 0.78
         },
         "idiom.clarity": {
           "type": "score",
@@ -61,11 +61,11 @@
         },
         "security.injection": {
           "type": "noul",
-          "noul": 0.12
+          "noul": 0.1
         },
         "security.unbounded_input": {
           "type": "noul",
-          "noul": 0.86
+          "noul": 0.33
         }
       },
       "usage": {
@@ -100,11 +100,12 @@
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
-            "debatable_tradeoff": 0.21,
-            "real_defect": 0.79,
+            "debatable_tradeoff": 0.25,
+            "real_defect": 0.75,
+            "remote_risk": 0.0,
             "style_preference": 0.0
           },
-          "confidence": 0.68
+          "confidence": 0.66
         }
       },
       "usage": {

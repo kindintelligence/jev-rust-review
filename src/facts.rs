@@ -43,6 +43,33 @@ pub static FACTS: &[(&str, &str)] = &[
         r"\.layer\(",
         "In Axum, with repeated `Router::layer` calls the layer added last runs first on the request; with `tower::ServiceBuilder`, layers run top to bottom.",
     ),
+    // The facts below were added on 2026-09-21 from the documentation of
+    // each item (DESIGN.md §1 lists the pages). Each states behaviour that
+    // is written in prose and in no type.
+    (
+        r"select!|timeout\(",
+        "`tokio::sync::mpsc::Sender::send` loses its message when cancelled: if a `select!` branch or a `timeout` drops the `send` future before it completes, the message is dropped and lost. This also holds when the branch awaits a function that awaits `send`. `Sender::reserve` followed by `Permit::send` does not lose the message.",
+    ),
+    (
+        r"notify_waiters|\.notified\(\)",
+        "`tokio::sync::Notify::notify_waiters` wakes only the `Notified` futures that already exist and stores no permit, unlike `notify_one`. A `Notified` future receives `notify_waiters` wakeups from the moment `notified()` creates it. Code that checks a condition and only then calls `notified()` misses a `notify_waiters` call made in between, so the `notified()` future must be created before the condition is checked.",
+    ),
+    (
+        r"layer\(",
+        "In Axum, `Router::layer` and `Router::route_layer` apply the middleware only to routes that were added before the call. A route added after the call does not get the middleware.",
+    ),
+    (
+        r"BufWriter",
+        "Dropping a `std::io::BufWriter` tries to flush its buffer but ignores any error, so a failed final write is lost silently; `flush` must be called before the drop to see the error. `tokio::io::BufWriter` does not flush on drop at all.",
+    ),
+    (
+        r"size_hint",
+        "`Iterator::size_hint` is not trusted: a safe iterator may report wrong bounds. `unsafe` code must not rely on it, for example to skip a bounds check or to size a buffer that it then writes without checking.",
+    ),
+    (
+        r"spawn\(",
+        "Dropping a `tokio::task::JoinHandle` detaches the task: it keeps running, and its panic or error is never observed. `JoinHandle::abort`, or dropping a `JoinSet`, stops it.",
+    ),
     (
         r"use_signal|Signal<|\.read\(\)",
         "In Dioxus 0.7, holding a signal's `.read()` guard while writing the same signal panics with an already-borrowed error, and signal guards must not be held across `.await`.",
@@ -78,6 +105,20 @@ mod tests {
         assert!(facts_for("+\n-\n>+\n -\n+    let x = y;\n").is_empty());
         let select = facts_for("+    tokio::select! { r = s.read_exact(&mut b) => {} }");
         assert!(select.iter().any(|f| f.contains("cancellation safe")));
+        let has = |code: &str, needle: &str| facts_for(code).iter().any(|f| f.contains(needle));
+        assert!(has("+    self.wake.notified().await;", "stores no permit"));
+        assert!(has(
+            "+        .route_layer(from_fn(require_admin))",
+            "added before the call"
+        ));
+        assert!(has(
+            "+    let mut out = BufWriter::new(file);",
+            "ignores any error"
+        ));
+        assert!(has(
+            "+    tokio::select! { () = forward(&tx, e) => {} }",
+            "loses its message"
+        ));
         assert!(
             facts_for("+    let n = x as u16;")
                 .first()

@@ -104,7 +104,7 @@ pub struct VerifyResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool: Option<ToolRef>,
     /// `report`, `insufficient_context`, `uncertain`, `dismiss`,
-    /// `tool_reported`, or `not_verified`.
+    /// `not_material`, `tool_reported`, or `not_verified`.
     pub verdict: &'static str,
     pub report_threshold: f64,
     pub dismiss_below: f64,
@@ -144,6 +144,10 @@ fn prob(c: &ChoiceOut, key: &str) -> f64 {
 ///   preference, or
 ///   `P(supported)` is below the dismiss bar while Jev did not say it lacked
 ///   context.
+/// - `not_material`: Jev confidently called the claim a `remote_risk`: true,
+///   but only under a condition the code gives no reason to expect. Like the
+///   style call, this judges the claim itself, so it holds when the claim
+///   names code Jev was not shown.
 /// - `report`: `P(supported)` reaches the report bar and the claim is a
 ///   defect (or a trade-off Jev still leans towards calling a defect).
 /// - `insufficient_context`: Jev chose `insufficient_context`. This is not a
@@ -171,17 +175,21 @@ pub fn verdict(
     let p_supported = prob(support, questions::SUPPORTED);
     let cat = category.choice.as_str();
     let lacks_context = support.choice == questions::INSUFFICIENT_CONTEXT;
-    let confident_style =
-        cat == "style_preference" && category.confidence >= questions::STYLE_DISMISS_MIN_CONFIDENCE;
+    let confident_style = cat == questions::STYLE_PREFERENCE
+        && category.confidence >= questions::STYLE_DISMISS_MIN_CONFIDENCE;
+    let confident_remote_risk = cat == questions::REMOTE_RISK
+        && category.confidence >= questions::REMOTE_RISK_MIN_CONFIDENCE;
+    // A trade-off, or a narrow `remote_risk`, that Jev still leans towards
+    // calling a defect.
+    let leans_real_defect = (cat == questions::DEBATABLE_TRADEOFF || cat == questions::REMOTE_RISK)
+        && prob(category, questions::REAL_DEFECT) >= questions::TRADEOFF_REAL_DEFECT_BAR;
     if confident_style {
         "dismiss"
     } else if support.choice == questions::REFUTED {
         unconfirmed("dismiss")
-    } else if p_supported >= report_t
-        && (cat == "real_defect"
-            || (cat == "debatable_tradeoff"
-                && prob(category, "real_defect") >= questions::TRADEOFF_REAL_DEFECT_BAR))
-    {
+    } else if confident_remote_risk {
+        "not_material"
+    } else if p_supported >= report_t && (cat == questions::REAL_DEFECT || leans_real_defect) {
         "report"
     } else if lacks_context {
         "insufficient_context"
@@ -556,7 +564,12 @@ fn build_verify_request(
         code.push('\n');
     }
     let code = redact::redact_text(&code, redactions);
-    let facts = facts::facts_for(&format!("{}\n{code}", imports_of(&content)));
+    // The definitions the claim names, from outside the excerpt.
+    let defs = related::definitions(git, &rs.new_side, claim, (&file, lo, hi));
+    let related_code = redact::redact_text(&related::render(&defs), redactions);
+    // Fact gates read the related definitions too: the call whose documented
+    // behaviour decides the claim is often in a helper, not in the excerpt.
+    let facts = facts::facts_for(&format!("{}\n{code}\n{related_code}", imports_of(&content)));
     let mut s = serde_json::Map::new();
     s.insert("notes".into(), VERIFY_NOTES.into());
     s.insert("file".into(), file.clone().into());
@@ -577,9 +590,6 @@ fn build_verify_request(
     if !facts.is_empty() {
         s.insert("facts".into(), facts.clone().into());
     }
-    // The definitions the claim names, from outside the excerpt.
-    let defs = related::definitions(git, &rs.new_side, claim, (&file, lo, hi));
-    let related_code = redact::redact_text(&related::render(&defs), redactions);
     let shown = format!(
         "{code}\n{related_code}\n{}\n{}",
         imports_of(&content),
@@ -679,6 +689,40 @@ mod tests {
         assert_eq!(
             verdict(&support("supported", 0.95), &clear, (0.7, 0.4), false),
             "dismiss"
+        );
+    }
+
+    #[test]
+    fn a_true_but_remote_risk_is_not_material() {
+        let mut remote = cat("remote_risk", 0.1);
+        remote.confidence = 0.8;
+        let well_supported = support("supported", 0.95);
+        assert_eq!(
+            verdict(&well_supported, &remote, (0.7, 0.4), false),
+            "not_material"
+        );
+        // It judges the claim, so unseen evidence does not change it.
+        assert_eq!(
+            verdict(&well_supported, &remote, (0.7, 0.4), true),
+            "not_material"
+        );
+        // A refuted claim is still dismissed first.
+        assert_eq!(
+            verdict(&support("refuted", 0.1), &remote, (0.7, 0.4), false),
+            "dismiss"
+        );
+        // A narrow win is weighed like a trade-off.
+        let mut narrow = cat("remote_risk", 0.45);
+        narrow.confidence = 0.2;
+        assert_eq!(
+            verdict(&well_supported, &narrow, (0.7, 0.4), false),
+            "report"
+        );
+        narrow = cat("remote_risk", 0.3);
+        narrow.confidence = 0.2;
+        assert_eq!(
+            verdict(&well_supported, &narrow, (0.7, 0.4), false),
+            "uncertain"
         );
     }
 

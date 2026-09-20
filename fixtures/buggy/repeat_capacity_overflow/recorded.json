@@ -7,19 +7,19 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.46
+          "noul": 0.45
         },
         "correctness.overflow": {
           "type": "noul",
-          "noul": 0.74
+          "noul": 0.73
         },
         "error_handling.panic": {
           "type": "noul",
-          "noul": 0.87
+          "noul": 0.86
         },
         "unsafe.memory_access": {
           "type": "noul",
-          "noul": 0.59
+          "noul": 0.56
         },
         "unsafe.aliasing": {
           "type": "noul",
@@ -27,13 +27,13 @@
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.59,
+          "score": 0.61,
           "probabilities": {
-            "0": 0.41,
-            "1": 0.59,
+            "0": 0.39,
+            "1": 0.61,
             "2": 0.0
           },
-          "confidence": 0.38,
+          "confidence": 0.41,
           "legend": {}
         },
         "api.breaking_change": {
@@ -42,7 +42,7 @@
         },
         "security.unbounded_input": {
           "type": "noul",
-          "noul": 0.17
+          "noul": 0.05
         }
       },
       "usage": {
@@ -64,24 +64,25 @@
         },
         "severity": {
           "type": "score",
-          "score": 2.95,
+          "score": 2.96,
           "probabilities": {
             "0": 0.0,
             "1": 0.01,
-            "2": 0.03,
-            "3": 0.96
+            "2": 0.02,
+            "3": 0.97
           },
-          "confidence": 0.95
+          "confidence": 0.96
         },
         "category": {
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
             "debatable_tradeoff": 0.01,
-            "real_defect": 0.99,
+            "real_defect": 0.74,
+            "remote_risk": 0.25,
             "style_preference": 0.0
           },
-          "confidence": 0.98
+          "confidence": 0.65
         }
       },
       "usage": {

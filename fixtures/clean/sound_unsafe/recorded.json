@@ -19,18 +19,18 @@
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.34,
+          "score": 0.38,
           "probabilities": {
-            "0": 0.66,
-            "1": 0.34,
+            "0": 0.62,
+            "1": 0.38,
             "2": 0.0
           },
-          "confidence": 0.49,
+          "confidence": 0.44,
           "legend": {}
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.14
+          "noul": 0.15
         }
       },
       "usage": {
@@ -52,24 +52,25 @@
         },
         "severity": {
           "type": "score",
-          "score": 2.86,
+          "score": 2.79,
           "probabilities": {
-            "0": 0.04,
+            "0": 0.06,
             "1": 0.01,
-            "2": 0.01,
-            "3": 0.94
+            "2": 0.02,
+            "3": 0.91
           },
-          "confidence": 0.86
+          "confidence": 0.79
         },
         "category": {
           "type": "choice",
-          "choice": "debatable_tradeoff",
+          "choice": "remote_risk",
           "probabilities": {
-            "debatable_tradeoff": 0.53,
-            "real_defect": 0.44,
+            "debatable_tradeoff": 0.19,
+            "real_defect": 0.19,
+            "remote_risk": 0.59,
             "style_preference": 0.03
           },
-          "confidence": 0.29
+          "confidence": 0.44
         }
       },
       "usage": {

@@ -1,0 +1,73 @@
+{
+  "model": "jev-1.13.0",
+  "note": "Recorded from the live Jev API by tests/eval.rs live_eval; replayed offline.",
+  "responses": {
+    "fd1e2ef84917db3d": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "correctness.logic": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "idiom.clarity": {
+          "type": "score",
+          "score": 0.0,
+          "probabilities": {
+            "0": 1.0,
+            "1": 0.0,
+            "2": 0.0
+          },
+          "confidence": 1.0,
+          "legend": {}
+        },
+        "api.breaking_change": {
+          "type": "noul",
+          "noul": 0.06
+        }
+      },
+      "usage": {
+        "input_tokens": 0
+      }
+    },
+    "7035c38e598f9bbd": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "support": {
+          "type": "choice",
+          "choice": "supported",
+          "probabilities": {
+            "insufficient_context": 0.13,
+            "refuted": 0.08,
+            "supported": 0.79
+          },
+          "confidence": 0.69
+        },
+        "severity": {
+          "type": "score",
+          "score": 1.78,
+          "probabilities": {
+            "0": 0.06,
+            "1": 0.14,
+            "2": 0.76,
+            "3": 0.04
+          },
+          "confidence": 0.69
+        },
+        "category": {
+          "type": "choice",
+          "choice": "remote_risk",
+          "probabilities": {
+            "debatable_tradeoff": 0.0,
+            "real_defect": 0.03,
+            "remote_risk": 0.97,
+            "style_preference": 0.0
+          },
+          "confidence": 0.96
+        }
+      },
+      "usage": {
+        "input_tokens": 0
+      }
+    }
+  }
+}

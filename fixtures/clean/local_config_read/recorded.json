@@ -1,0 +1,104 @@
+{
+  "model": "jev-1.13.0",
+  "note": "Recorded from the live Jev API by tests/eval.rs live_eval; replayed offline.",
+  "responses": {
+    "5cbe86eac9fb27e2": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "correctness.logic": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "idiom.clarity": {
+          "type": "score",
+          "score": 0.03,
+          "probabilities": {
+            "0": 0.97,
+            "1": 0.03,
+            "2": 0.0
+          },
+          "confidence": 0.95,
+          "legend": {}
+        }
+      },
+      "usage": {
+        "input_tokens": 0
+      }
+    },
+    "c1bc7d030021f184": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "correctness.logic": {
+          "type": "noul",
+          "noul": 0.24
+        },
+        "idiom.clarity": {
+          "type": "score",
+          "score": 0.01,
+          "probabilities": {
+            "0": 0.99,
+            "1": 0.01,
+            "2": 0.0
+          },
+          "confidence": 0.98,
+          "legend": {}
+        },
+        "api.breaking_change": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "security.injection": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "security.unbounded_input": {
+          "type": "noul",
+          "noul": 0.13
+        }
+      },
+      "usage": {
+        "input_tokens": 0
+      }
+    },
+    "8a4af34de1c232bf": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "support": {
+          "type": "choice",
+          "choice": "supported",
+          "probabilities": {
+            "insufficient_context": 0.18,
+            "refuted": 0.06,
+            "supported": 0.76
+          },
+          "confidence": 0.64
+        },
+        "severity": {
+          "type": "score",
+          "score": 1.76,
+          "probabilities": {
+            "0": 0.03,
+            "1": 0.37,
+            "2": 0.41,
+            "3": 0.19
+          },
+          "confidence": 0.39
+        },
+        "category": {
+          "type": "choice",
+          "choice": "remote_risk",
+          "probabilities": {
+            "debatable_tradeoff": 0.01,
+            "real_defect": 0.04,
+            "remote_risk": 0.95,
+            "style_preference": 0.0
+          },
+          "confidence": 0.93
+        }
+      },
+      "usage": {
+        "input_tokens": 0
+      }
+    }
+  }
+}

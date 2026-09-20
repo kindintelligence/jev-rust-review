@@ -66,6 +66,19 @@ fn every_dimension_and_profile_has_a_reference() {
     }
 }
 
+/// The eval grades a finding by its dimension, and a smaller model invents
+/// names such as `logic` unless the skill lists the real ones.
+#[test]
+fn skill_lists_every_dimension() {
+    let skill = read("skills/rust-review/SKILL.md");
+    let listed = Dimension::ALL
+        .iter()
+        .map(|d| format!("`{}`", d.name()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    assert!(skill.contains(&listed), "skill lacks: {listed}");
+}
+
 #[test]
 fn verification_verdicts_are_documented() {
     let skill = read("skills/rust-review/SKILL.md");
@@ -74,6 +87,7 @@ fn verification_verdicts_are_documented() {
         "insufficient_context",
         "uncertain",
         "dismiss",
+        "not_material",
         "tool_reported",
     ] {
         assert!(
@@ -95,9 +109,9 @@ fn tool_descriptions_describe_the_current_model() {
         .unwrap();
     for needed in [
         "supported / refuted / insufficient_context",
-        "report | insufficient_context | uncertain | dismiss",
+        "report | insufficient_context | uncertain | dismiss | not_material",
         "severity` score",
-        "real_defect / debatable_tradeoff / style_preference",
+        "real_defect / remote_risk / debatable_tradeoff / style_preference",
     ] {
         assert!(
             verify.contains(needed),

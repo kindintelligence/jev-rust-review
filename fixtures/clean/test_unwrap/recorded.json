@@ -7,7 +7,7 @@
       "answers": {
         "testing.weak_assertion": {
           "type": "noul",
-          "noul": 0.33
+          "noul": 0.31
         }
       },
       "usage": {
@@ -33,30 +33,31 @@
           "type": "choice",
           "choice": "refuted",
           "probabilities": {
-            "insufficient_context": 0.0,
-            "refuted": 0.91,
+            "insufficient_context": 0.01,
+            "refuted": 0.9,
             "supported": 0.09
           },
-          "confidence": 0.86
+          "confidence": 0.85
         },
         "severity": {
           "type": "score",
-          "score": 0.77,
+          "score": 0.66,
           "probabilities": {
-            "0": 0.58,
+            "0": 0.63,
             "1": 0.08,
-            "2": 0.34,
+            "2": 0.29,
             "3": 0.0
           },
-          "confidence": 0.23
+          "confidence": 0.34
         },
         "category": {
           "type": "choice",
-          "choice": "debatable_tradeoff",
+          "choice": "remote_risk",
           "probabilities": {
-            "debatable_tradeoff": 0.5,
-            "real_defect": 0.29,
-            "style_preference": 0.21
+            "debatable_tradeoff": 0.29,
+            "real_defect": 0.04,
+            "remote_risk": 0.44,
+            "style_preference": 0.23
           },
           "confidence": 0.25
         }

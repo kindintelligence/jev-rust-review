@@ -7,17 +7,17 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.15
+          "noul": 0.16
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.15,
+          "score": 0.14,
           "probabilities": {
-            "0": 0.85,
-            "1": 0.15,
+            "0": 0.86,
+            "1": 0.14,
             "2": 0.0
           },
-          "confidence": 0.77,
+          "confidence": 0.79,
           "legend": {}
         }
       },
@@ -25,70 +25,75 @@
         "input_tokens": 0
       }
     },
-    "5ea27772969bc0d6": {
+    "580ede68f586db0e": {
       "model": "jev-1.13.0",
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.08
+          "noul": 0.65
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.01,
+          "score": 0.18,
           "probabilities": {
-            "0": 0.99,
-            "1": 0.01,
-            "2": 0.0
+            "0": 0.83,
+            "1": 0.16,
+            "2": 0.01
           },
-          "confidence": 0.98,
+          "confidence": 0.73,
           "legend": {}
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.06
+          "noul": 0.09
         },
         "axum.layer_order": {
           "type": "noul",
-          "noul": 0.09
+          "noul": 0.48
+        },
+        "axum.route_after_layer": {
+          "type": "noul",
+          "noul": 0.95
         }
       },
       "usage": {
         "input_tokens": 0
       }
     },
-    "06da519627814a2e": {
+    "e6d15c74ba15d692": {
       "model": "jev-1.13.0",
       "answers": {
         "support": {
           "type": "choice",
-          "choice": "refuted",
+          "choice": "supported",
           "probabilities": {
             "insufficient_context": 0.0,
-            "refuted": 0.67,
-            "supported": 0.33
+            "refuted": 0.03,
+            "supported": 0.97
           },
-          "confidence": 0.5
+          "confidence": 0.95
         },
         "severity": {
           "type": "score",
-          "score": 2.96,
+          "score": 2.99,
           "probabilities": {
-            "0": 0.01,
+            "0": 0.0,
             "1": 0.0,
             "2": 0.0,
-            "3": 0.99
+            "3": 1.0
           },
-          "confidence": 0.96
+          "confidence": 0.99
         },
         "category": {
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
-            "debatable_tradeoff": 0.01,
-            "real_defect": 0.98,
-            "style_preference": 0.01
+            "debatable_tradeoff": 0.0,
+            "real_defect": 1.0,
+            "remote_risk": 0.0,
+            "style_preference": 0.0
           },
-          "confidence": 0.97
+          "confidence": 1.0
         }
       },
       "usage": {

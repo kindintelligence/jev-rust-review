@@ -364,7 +364,7 @@ pub static CORE: &[QuestionSpec] = &[
         D::Correctness,
         "Can integer arithmetic in the changed lines of `code` overflow or underflow for inputs the code can realistically receive, for example subtracting a larger unsigned value from a smaller one?",
         "Some realistic input makes an addition, subtraction, multiplication, or shift overflow or underflow.",
-        "The arithmetic cannot overflow for realistic inputs, or it uses checked, saturating, or wrapping operations.",
+        "The arithmetic cannot overflow for realistic inputs, for example because it adds up ordinary counts or sizes that stay far below the type's range, or it uses checked, saturating, or wrapping operations.",
     )
     .gate(&[
         &[r"\b(u8|u16|u32|u64|u128|usize|i8|i16|i32|i64|i128|isize)\b", r"len\(\)"],
@@ -440,7 +440,7 @@ pub static CORE: &[QuestionSpec] = &[
         D::ErrorHandling,
         "Can the changed lines in `code` panic on input or state that the program does not control, for example through `unwrap`, `expect`, indexing, `panic!`, or `unreachable!`?",
         "A panic is reachable from external input, I/O results, or other state the program does not control.",
-        "Every possible panic enforces an invariant that the surrounding code has already checked or documented.",
+        "Every possible panic enforces an invariant that the surrounding code has already checked or documented, or it only unwraps a lock result, which fails only after another thread has already panicked.",
     )
     .gate(&[&[r"\.unwrap\(\)", r"\.expect\(", r"panic!", r"unreachable!", r"todo!", r"unimplemented!", INDEXING]])
     .skip(NON_PROD)
@@ -450,9 +450,9 @@ pub static CORE: &[QuestionSpec] = &[
     Q::noul(
         "error_handling.lossy",
         D::ErrorHandling,
-        "Does the changed code in `code` replace an error with a new one built from a fixed variant, a fixed message, or only the old error's text, so that the original error's source or context is lost?",
-        "The original error's information is discarded, so the caller cannot tell what actually failed.",
-        "The original error is kept, wrapped, or chained, or it carries no useful information.",
+        "Does the changed code in `code` replace an error with a new one built from a fixed variant, a fixed message, or only the old error's text, for example by formatting it into a `String` with `format!` or `to_string`, so that the original error's type, kind, or source chain is lost?",
+        "The original error value is discarded and at most its text survives, so the caller cannot match on what actually failed.",
+        "The original error value is kept, wrapped, or chained as a source, or it carries no useful information.",
     )
     .gate(&[&[r"map_err", r"\.ok_or", r"Box<dyn\s+(std::error::)?Error", r"anyhow!|bail!", r"impl\s+From<", r#"Err\(\s*(format!|String::|")"#]])
     .skip(TESTS)
@@ -538,6 +538,15 @@ pub static CORE: &[QuestionSpec] = &[
     ])
     .beyond("Each step is memory safe and type correct, so the compiler accepts it; the race lives in the gap between two statements, which no lint models.")
     .overlaps(&["clippy::map_entry"]),
+    Q::noul(
+        "concurrency.lost_wakeup",
+        D::Concurrency,
+        "Does the changed code in `code` check a condition and then, in a separate step, start waiting for a notification, such as `Notify::notified`, `Condvar::wait`, or a park, so that a notification sent between the check and the wait is missed and the waiter sleeps forever?",
+        "A notification sent after the check and before the wait begins is lost, and nothing else wakes the waiter.",
+        "The wait is registered before the condition is checked, the condition is rechecked in a loop under the lock the notifier takes, or the notification stores a permit.",
+    )
+    .gate(&[&[r"\.notified\(\)", r"Condvar", r"\.wait\(", r"\.wait_while\(", r"park\(\)"]])
+    .beyond("A check followed by a wait is valid code, and whether a wakeup can fall in the gap depends on which notify call the other side uses, which is documented in prose."),
     Q::noul(
         "concurrency.atomics",
         D::Concurrency,
@@ -772,9 +781,9 @@ pub static CORE: &[QuestionSpec] = &[
     Q::noul(
         "security.unbounded_input",
         D::Security,
-        "Does the changed code in `code` read or deserialize untrusted input without a size limit, so that a large or crafted input can exhaust memory?",
-        "Untrusted input is read or parsed with no bound on its size.",
-        "Input size is bounded, or the input is trusted.",
+        "Does the changed code in `code` read or deserialize input from outside the program's trust boundary, such as a network peer, a request body, or an uploaded file, without a size limit, so that a large or crafted input can exhaust memory?",
+        "Input from a network peer, a request, or another untrusted party is read or parsed with no bound on its size.",
+        "Input size is bounded, or the input is trusted, for example a local file or configuration that the operator chose.",
     )
     .gate(&[&[r"from_slice", r"from_reader", r"read_to_end", r"read_to_string", r"bincode", r"\.bytes\(\)\.await", r"to_bytes\("]])
     .skip(TESTS)
@@ -876,7 +885,7 @@ pub static PROFILES: &[Profile] = &[
         name: "axum",
         detect_crates: &["axum"],
         reference: "references/frameworks/axum.md",
-        verified_against: "axum 0.8: docs.rs/axum/latest/axum/middleware/index.html#ordering and extract::Extension",
+        verified_against: "axum 0.8: docs.rs/axum/latest/axum/middleware/index.html#ordering, extract::Extension, and Router::layer / Router::route_layer (existing routes only)",
         questions: &[
             Q::noul(
                 "axum.error_exposure",
@@ -896,6 +905,15 @@ pub static PROFILES: &[Profile] = &[
             )
             .gate(&[&[r"\.layer\(", r"route_layer", r"ServiceBuilder"]])
             .beyond("Every ordering of layers type checks; which order defeats authentication or a timeout depends on what each layer does."),
+            Q::noul(
+                "axum.route_after_layer",
+                D::Security,
+                "Does the change in `code` add a route to a `Router` after a `layer` or `route_layer` call whose middleware the route needs, such as authentication, given that both calls apply the middleware only to routes added before them?",
+                "A route that needs the middleware is added after the `layer` or `route_layer` call, so it is served without it.",
+                "Every route that needs the middleware is added before the call, or the routes added after it are meant to be public.",
+            )
+            .gate(&[&[r"layer\("], &[r"\.route\(", r"\.nest\(", r"\.merge\("]])
+            .beyond("A router built in any order type checks; that a layer skips routes added after it is stated in Axum's documentation, not in its types."),
             Q::noul(
                 "axum.extension_state",
                 D::Correctness,
@@ -1002,9 +1020,10 @@ pub static PROFILES: &[Profile] = &[
 //   "Jev could not verify this from local context" rather than drop them.
 // - `severity` is a Score, because severity is ordered; read the mass on
 //   `SEVERITY_HIGH_FROM..` for "at least high".
-// - `category` separates defects from taste. It has no "not supported"
-//   option on purpose: that would be the complement of `support`, and Jev
-//   does not promise that complementary questions agree.
+// - `category` separates defects from taste, and from claims that are true
+//   but not worth the author's time (`remote_risk`). It has no "not
+//   supported" option on purpose: that would be the complement of `support`,
+//   and Jev does not promise that complementary questions agree.
 
 pub const VERIFY_SUPPORT: &str = "support";
 pub const VERIFY_SEVERITY: &str = "severity";
@@ -1055,17 +1074,26 @@ pub fn severity_name(level: usize) -> Option<&'static str> {
     SEVERITY_LEVELS.get(level).map(|(name, _)| *name)
 }
 
+pub const REAL_DEFECT: &str = "real_defect";
+pub const DEBATABLE_TRADEOFF: &str = "debatable_tradeoff";
+pub const STYLE_PREFERENCE: &str = "style_preference";
+pub const REMOTE_RISK: &str = "remote_risk";
+
 pub const CATEGORY_OPTIONS: &[(&str, &str)] = &[
     (
-        "real_defect",
-        "The claim describes code that can misbehave, crash, leak, be unsound, or be insecure.",
+        REAL_DEFECT,
+        "The claim describes code that misbehaves, crashes, leaks, is unsound, or is insecure in a situation the program can realistically meet.",
     ),
     (
-        "debatable_tradeoff",
+        REMOTE_RISK,
+        "The claim is true only under a condition that the code gives no reason to expect, such as a lock poisoned by an earlier panic, a sum of ordinary counts overflowing, or a local file too large for memory.",
+    ),
+    (
+        DEBATABLE_TRADEOFF,
         "The claim describes a reasonable design or performance trade-off that people could disagree on.",
     ),
     (
-        "style_preference",
+        STYLE_PREFERENCE,
         "The claim is about naming, formatting, or code style rather than behaviour.",
     ),
 ];
@@ -1078,6 +1106,10 @@ pub const TRADEOFF_REAL_DEFECT_BAR: f64 = 0.40;
 /// least this confident. A narrow style win on a well-supported claim falls
 /// through to `uncertain` instead of being thrown away.
 pub const STYLE_DISMISS_MIN_CONFIDENCE: f64 = 0.50;
+
+/// `remote_risk` makes a claim `not_material` only when the category answer
+/// is at least this confident. A narrow win is weighed like a trade-off.
+pub const REMOTE_RISK_MIN_CONFIDENCE: f64 = 0.50;
 
 fn choice_json(instructions: &str, options: &[(&str, &str)]) -> serde_json::Value {
     let criteria: serde_json::Map<String, serde_json::Value> = options
