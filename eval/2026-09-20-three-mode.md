@@ -5,7 +5,7 @@ These are the reports `tests/e2e.rs` wrote, unedited apart from the headings. Th
 - **T** is tools only, **C** is Claude with the plugin and no Jev, **J** is the full pipeline.
 - "Runs" counts graded cells. A cell is ungraded when the session never got a result from `evaluate_rust_changes`, or the report had no JSON block. Those cells are listed at the end of each report.
 - Token counts are the CLI's `modelUsage` summed over every turn. Almost all of the input is cache reads, so the sum tracks the number of turns. Use the cost column to compare modes.
-- Mode T ran once per matrix and is the same in all three.
+- Mode T ran once per matrix and gives the same result in all four.
 - "Findings for a person to judge" are entries that did not match the seeded bug's lines and dimension. Some are real: `symlink_check_then_delete` has a second, unplanned bug (a kept `.lock` file makes `remove_dir` fail). Some are the seeded bug filed under another dimension, which the grader does not count.
 
 
@@ -262,3 +262,118 @@ These are the reports `tests/e2e.rs` wrote, unedited apart from the headings. Th
 - J route_added_after_layer run 2: wrong mode: evaluate status was ""
 - J select_cancellation run 2: wrong mode: evaluate status was ""
 - J arc_clone run 3: report has no json findings block
+
+
+## Matrix 4: claude-haiku-4-5-20251001, after the four changes for a smaller model (2026-09-20, commit 9c92705)
+
+| Mode | Runs | Beyond-tooling bugs found | All seeded bugs found | False positives on clean fixtures | Extra findings on buggy fixtures | Claude tokens (in / out) | Claude cost | Jev tokens | Jev cost | Wall time |
+|---|---|---|---|---|---|---|---|---|---|---|
+| T | 30 | 0/19 | 4/23 | 0 in 7 runs | 4 | 0 / 0 | $0.00 | 0 | $0.0000 | 2 min |
+| C | 59 | 26/47 | 26/47 | 2 in 12 runs | 15 | 15462609 / 203918 | $4.73 | 0 | $0.0000 | 51 min |
+| J | 59 | 31/48 | 31/48 | 2 in 11 runs | 34 | 15685099 / 219855 | $5.10 | 336314 | $0.0141 | 54 min |
+
+#### Per fixture (runs that found the seeded bug)
+
+| Fixture | Kind | Label: tool catches | T | C | J |
+|---|---|---|---|---|---|
+| blocking_in_async | buggy | false | 0/1 | - | - |
+| bufwriter_never_flushed | buggy | false | 0/1 | 0/3 | 0/3 |
+| check_then_act | buggy | false | 0/1 | 0/3 | 3/3 |
+| error_flattened_to_string | buggy | false | 0/1 | 2/3 | 0/3 |
+| guard_across_await | buggy | true | 1/1 | - | - |
+| length_guard_weakened | buggy | false | 0/1 | 3/3 | 3/3 |
+| lock_order_inversion | buggy | false | 0/1 | 1/3 | 0/3 |
+| lossy_error | buggy | true | 1/1 | - | - |
+| noisy_inventory_tidy | buggy | false | 0/1 | 2/3 | 3/3 |
+| noisy_service_tidy | buggy | false | 0/1 | 1/3 | 3/3 |
+| notify_lost_wakeup | buggy | false | 0/1 | 3/3 | 0/3 |
+| prompt_injection | buggy | false | 0/1 | 2/3 | 3/3 |
+| repeat_capacity_overflow | buggy | false | 0/1 | 3/3 | 3/3 |
+| route_added_after_layer | buggy | false | 0/1 | 1/3 | 0/3 |
+| select_cancellation | buggy | false | 0/1 | 1/3 | 3/3 |
+| select_drops_send | buggy | false | 0/1 | 3/3 | 2/3 |
+| semver_break | buggy | true | 1/1 | - | - |
+| size_hint_trusted | buggy | false | 0/1 | 1/2 | 3/3 |
+| swallowed_result | buggy | false | 0/1 | - | - |
+| symlink_check_then_delete | buggy | false | 0/1 | 0/3 | 2/3 |
+| truncating_cast | buggy | true | 1/1 | - | - |
+| unsound_unsafe | buggy | false | 0/1 | 3/3 | 3/3 |
+| untagged_serde | buggy | false | 0/1 | - | - |
+| arc_clone | clean |  | 0 FP in 1 | 0 FP in 3 | 0 FP in 3 |
+| bounded_channel | clean |  | 0 FP in 1 | - | - |
+| explained_expect | clean |  | 0 FP in 1 | 0 FP in 3 | 1 FP in 2 |
+| plain_for_loop | clean |  | 0 FP in 1 | - | - |
+| scoped_lock_before_await | clean |  | 0 FP in 1 | 2 FP in 3 | 1 FP in 3 |
+| sound_unsafe | clean |  | 0 FP in 1 | 0 FP in 3 | 0 FP in 3 |
+| test_unwrap | clean |  | 0 FP in 1 | - | - |
+
+#### Jev's two stages, judged apart (mode J)
+
+- Triage flagged the seeded bug's lines in 39/48 buggy runs. It flagged 86 of 261 units overall.
+- Verification of candidates on the seeded bug: dismiss 11, insufficient_context 1, report 38, uncertain 5.
+- Verification of every other candidate: dismiss 3, insufficient_context 3, report 26, uncertain 4.
+
+#### Findings for a person to judge
+
+- C check_then_act run 1 (buggy): `src/registry.rs:9-16` [correctness / review] Race condition: check and insert of registry entries are not atomic
+- C check_then_act run 2 (buggy): `src/registry.rs:10-14` [correctness / review] TOCTOU race: mutex released between contains_key check and insert
+- C check_then_act run 3 (buggy): `src/registry.rs:9-15` [async / review] Lock acquired separately for check and insert allows concurrent violation of uniqueness invariant
+- C lock_order_inversion run 1 (buggy): `src/report.rs:8-16` [async / review] Deadlock: reconcile acquires locks in opposite order from transfer
+- C lock_order_inversion run 3 (buggy): `src/report.rs:10-11` [async / review] Lock ordering deadlock hazard: reconcile acquires ledger→accounts while transfer acquires accounts→ledger
+- C noisy_inventory_tidy run 2 (buggy): `src/stock.rs:35-37` [logic / review] available() subtracts operands in wrong order
+- C noisy_service_tidy run 1 (buggy): `src/sessions.rs:55-63` [async / review] Race condition in open_session: limit check outside of mutex
+- C noisy_service_tidy run 3 (buggy): `src/sessions.rs:55-63` [async / review] Race condition: multiple tasks can exceed session limit between check and insert
+- C prompt_injection run 2 (buggy): `src/pick.rs:5-7` [unsafe / review] Direct indexing panics on empty slice despite Option return type
+- C route_added_after_layer run 1 (buggy): `src/app.rs:23-23` [access_control / review] Admin endpoint `/admin/keys` missing `require_admin` middleware
+- C route_added_after_layer run 2 (buggy): `src/app.rs:18-24` [logic / review] Admin endpoint /admin/keys is not protected by require_admin middleware
+- C select_cancellation run 2 (buggy): `src/conn.rs:5-19` [logic / review] `run` function loop never exits, causing caller to hang indefinitely
+- C size_hint_trusted run 2 (buggy): `src/append.rs:1-4` [unsafe / review] room_for uses lower bound as reserve amount when upper bound is unknown, causing buffer overflow
+- C symlink_check_then_delete run 2 (buggy): `src/purge.rs:16-17` [correctness / review] fs::remove_dir() fails if subdirectory contains only .lock files
+- C symlink_check_then_delete run 3 (buggy): `src/purge.rs:13-17` [correctness / review] fs::remove_dir fails when a subdirectory contains .lock files after recursive purge
+- C scoped_lock_before_await run 2 (clean): `src/counter.rs:8-10` [correctness / review] unwrap() on Mutex::lock() can panic if the lock is poisoned, turning a prior panic into a DoS
+- C scoped_lock_before_await run 2 (clean): `src/counter.rs:14-16` [correctness / review] unwrap() on Mutex::lock() can panic if the lock is poisoned
+- J check_then_act run 1 (buggy): `src/registry.rs:10-10` [error_handling / review] Calling unwrap() on poisoned mutex will panic
+- J check_then_act run 2 (buggy): `src/registry.rs:10-10` [error_handling / review] Mutex lock can panic on poisoning
+- J check_then_act run 2 (buggy): `src/registry.rs:14-14` [error_handling / review] Mutex lock can panic on poisoning
+- J check_then_act run 3 (buggy): `src/registry.rs:10-10` [error_handling / review] self.users.lock().unwrap() will panic if the mutex is poisoned
+- J error_flattened_to_string run 1 (buggy): `src/counter.rs:10-14` [security / review] load_counter reads files without size validation, allowing unbounded memory allocation
+- J error_flattened_to_string run 2 (buggy): `src/counter.rs:10-14` [security / review] load_counter reads entire file into memory without size limit
+- J error_flattened_to_string run 3 (buggy): `src/counter.rs:10-14` [security / review] load_counter reads entire file without size limit, enabling memory exhaustion
+- J lock_order_inversion run 1 (buggy): `src/report.rs:10-11` [error_handling / review] expect() on mutex locks can panic if poisoned
+- J lock_order_inversion run 1 (buggy): `src/report.rs:15-15` [correctness / review] Reconciliation misses ledger corruption when accounts are empty
+- J lock_order_inversion run 2 (buggy): `src/report.rs:10-11` [error_handling / review] reconcile panics on mutex poisoning with no error path
+- J lock_order_inversion run 3 (buggy): `src/report.rs:9-11` [async / review] Lock order inversion between reconcile and transfer causes deadlock risk
+- J lock_order_inversion run 3 (buggy): `src/report.rs:10-11` [error_handling / review] expect() on poisoned mutex can panic and cascade failures
+- J noisy_inventory_tidy run 1 (buggy): `src/stock.rs:40-41` [correctness / review] total_batch() sum of u32 values can overflow
+- J noisy_inventory_tidy run 1 (buggy): `src/orders.rs:4-5` [correctness / review] total_order() sum of u32 values can overflow
+- J noisy_inventory_tidy run 1 (buggy): `src/pricing.rs:4-5` [correctness / review] total_tier() sum of u32 values can overflow
+- J noisy_inventory_tidy run 2 (buggy): `src/stock.rs:3-6` [correctness / review] total_pallet() sums u32 values without saturation, allowing overflow
+- J noisy_inventory_tidy run 2 (buggy): `src/orders.rs:3-6` [correctness / review] total_order() sums u32 values without saturation, allowing overflow
+- J noisy_inventory_tidy run 2 (buggy): `src/pricing.rs:3-6` [correctness / review] total_tier() sums u32 values without saturation, allowing overflow
+- J noisy_inventory_tidy run 3 (buggy): `src/stock.rs:3-6` [correctness / review] total_pallet() can overflow on large slices
+- J noisy_inventory_tidy run 3 (buggy): `src/stock.rs:39-42` [correctness / review] total_batch() can overflow on large slices
+- J noisy_inventory_tidy run 3 (buggy): `src/orders.rs:3-6` [correctness / review] total_order() can overflow on large slices
+- J noisy_inventory_tidy run 3 (buggy): `src/orders.rs:34-37` [correctness / review] total_manifest() can overflow on large slices
+- J noisy_inventory_tidy run 3 (buggy): `src/pricing.rs:3-6` [correctness / review] total_tier() can overflow on large slices
+- J noisy_inventory_tidy run 3 (buggy): `src/pricing.rs:34-37` [correctness / review] total_invoice() can overflow on large slices
+- J noisy_service_tidy run 1 (buggy): `src/jobs.rs:4-6` [correctness / review] total_job sums u32 values which can overflow for large arrays
+- J noisy_service_tidy run 1 (buggy): `src/jobs.rs:35-37` [correctness / review] total_deadline sums u32 values which can overflow for large arrays
+- J noisy_service_tidy run 1 (buggy): `src/metrics.rs:4-6` [correctness / review] total_gauge sums u32 values which can overflow for large arrays
+- J noisy_service_tidy run 1 (buggy): `src/metrics.rs:35-37` [correctness / review] total_series sums u32 values which can overflow for large arrays
+- J noisy_service_tidy run 1 (buggy): `src/sessions.rs:28-30` [correctness / review] total_login sums u32 values which can overflow for large arrays
+- J noisy_service_tidy run 1 (buggy): `src/sessions.rs:72-74` [correctness / review] total_nonce sums u32 values which can overflow for large arrays
+- J noisy_service_tidy run 2 (buggy): `src/sessions.rs:54-63` [correctness / review] State check on line 57 is not atomic with insertion on lines 60-61, violating limit invariant
+- J noisy_service_tidy run 3 (buggy): `src/jobs.rs:3-6` [correctness / review] Sum of u32 slice can overflow, appears in 6 functions
+- J symlink_check_then_delete run 1 (buggy): `src/purge.rs:9-11` [correctness / review] `.lock` extension check includes directories, contradicting docstring
+- J symlink_check_then_delete run 2 (buggy): `src/purge.rs:7-10` [concurrency / review] Extension check and metadata retrieval race: filesystem can change between check and removal
+- J explained_expect run 3 (clean): `src/ident.rs:10-10` [correctness / review] Behavior change: regex pattern is more restrictive than original code
+- J scoped_lock_before_await run 2 (clean): `src/counter.rs:12-19` [error_handling / review] unwrap() on Mutex lock panics if poisoned
+- T lossy_error run 1 (buggy): `src/config.rs:12-12` [error_handling / tool] clippy::map_err_ignore: `map_err(|_|...` wildcard pattern discards the original error
+- T lossy_error run 1 (buggy): `src/config.rs:1-4294967295` [api / tool] cargo-semver-checks enum_variant_added: enum variant added on exhaustive enum
+- T lossy_error run 1 (buggy): `src/config.rs:1-4294967295` [api / tool] cargo-semver-checks enum_variant_missing: pub enum variant removed or renamed
+- T unsound_unsafe run 1 (buggy): `src/table.rs:12-12` [tool / tool] clippy::undocumented_unsafe_blocks: unsafe block missing a safety comment
+
+#### Cells that could not be graded
+
+- C size_hint_trusted run 1: report has no json findings block
+- J explained_expect run 2: wrong mode: evaluate status was ""

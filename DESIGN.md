@@ -417,6 +417,24 @@ Measured on Jev's two stages alone, with ideal claims and before any Claude run:
 
 The rules for judging the Haiku re-run are rules 1 to 6 above, unchanged. The re-run covers modes C and J, because the unit and skill changes reach both.
 
+**Third result (2026-09-20, `claude-haiku-4-5`, three runs per cell).**
+
+| | Without Jev | With Jev |
+|---|---|---|
+| Before the four changes (matrix 3), runs graded in both modes | 25/34 bugs, 5 other entries | 20/34 bugs, 21 other entries |
+| After (matrix 4), runs graded in both modes | 26/47 bugs, 15 other entries | 30/47 bugs, 34 other entries |
+| Entries on clean fixtures, after | 2 in 12 runs | 2 in 11 runs |
+| Runs that could not be graded, of 120 | 21 before | 2 after |
+
+By the rules: Jev meets the floor on Haiku (rule 1) and adds 4 bugs of 47, above the margin of 3 (rule 2). So Jev keeps its default place on the evidence of the smaller model. What each change did:
+
+- **One unit per item** is where the gain is. On the two large diffs Haiku found the bug in 3 of 6 runs alone and 6 of 6 with Jev, which flagged 7 of 31 and 7 of 25 units.
+- **Lenient `scope` and the tool-calling paragraph** took ungraded runs from 21 to 2.
+- **Related definitions** lifted Jev's own verification (16 of 19 true claims, from 12). In the headless runs Jev still answered `dismiss` on 11 seeded candidates, against 12 before.
+- **Flags as questions** did not stop the noise. Other entries rose from 15 to 34 with Jev. Many restate a flag, and Jev's verification confirms them because they are true and trivial.
+
+Still open: `notify_lost_wakeup` (0 of 3 with Jev, 3 of 3 without) and `route_added_after_layer` rest on documented library behaviour; more entries in `facts.rs` would address them. Verification has no notion of "true but not worth reporting". Sonnet 5 has not been re-run with these changes.
+
 ## 11. Progress checklist
 
 - [x] Preflight, private repo created
@@ -430,6 +448,7 @@ The rules for judging the Haiku re-run are rules 1 to 6 above, unchanged. The re
 - [x] `beyond_tooling` and `tool_overlap` on every question; 4 questions deleted, 7 narrowed; deduplication in triage and verification
 - [x] Fixtures as buildable crates; 10 harder fixtures and 2 noisy diffs; three-mode eval harness; decision rules (§10)
 - [x] Three-mode eval: three matrices on two models, published in the README
+- [x] Haiku re-run after the four changes: Jev now adds 4 bugs of 47 on the smaller model (§10, third result)
 - [x] First four changes for a smaller model: flags as questions, related definitions and `unseen`, lenient `scope`, one unit per item (§10)
 - [x] Adopt the redesigned questions.rs, Cargo.toml and clippy.toml; new verification model
 - [x] Live eval on the new question ids
