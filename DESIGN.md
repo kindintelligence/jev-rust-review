@@ -383,6 +383,22 @@ This corpus cannot show a saving in Claude tokens from triage. Every fixture is 
 
 Models: `claude-sonnet-5` and `claude-haiku-4-5-20251001`. Same 20 fixtures, three runs per cell, modes C and J. Mode T does not depend on the model.
 
+**Second result (2026-09-20).** Three runs per cell. The README has the full table and `eval/2026-09-20-three-mode.md` the raw reports.
+
+| Model | Without Jev | With Jev | By the rules |
+|---|---|---|---|
+| `claude-sonnet-5` | 45/48 bugs, 2 entries on clean fixtures | 46/48 bugs, 1 entry | Meets the floor (rule 1). No added value by rule 2's margin, so rule 3 applies: Jev stays on and the README says no gain was measured. |
+| `claude-haiku-4-5` | 25/34 bugs on runs graded in both modes, 5 other entries | 20/34 bugs, 21 other entries | Fails the floor (rule 4). |
+
+Rule 4 asks which stage caused the failure. Both did, because the smaller model treats Jev's output as instruction:
+
+- **Triage.** In 7 of Haiku's 17 misses with Jev it never raised the seeded bug. Its extra entries sit where triage flagged: poisoned-mutex unwraps under `error_handling.panic`, `u32` sums under `correctness.overflow`. A flag meant as "look here" was reported as a finding.
+- **Verification.** In 6 of the 17 it raised the bug and Jev answered `dismiss`. The second-opinion wording that fixed this on Sonnet did not hold on Haiku.
+
+Haiku also could not drive the tools reliably: 21 of 120 runs never got a result from `evaluate_rust_changes`, mostly because it sent malformed JSON for an empty `scope`.
+
+Not yet done, and the owner's call: make the server's output safe for a model that obeys it. The candidates are to return flags as questions to check and not as labels, to stop returning `dismiss` for a claim whose evidence is outside the excerpt, to give verification the definitions the claim names, to accept an absent or empty `scope` however it is spelt, and to make one unit per changed function. Each is a change after results, so each needs a re-run.
+
 ## 11. Progress checklist
 
 - [x] Preflight, private repo created
@@ -395,6 +411,8 @@ Models: `claude-sonnet-5` and `claude-haiku-4-5-20251001`. Same 20 fixtures, thr
 - [x] Tools first: `cargo_diagnostics`, extended Clippy set, changed-line filter, project lint policy, cargo-semver-checks, Miri advice
 - [x] `beyond_tooling` and `tool_overlap` on every question; 4 questions deleted, 7 narrowed; deduplication in triage and verification
 - [x] Fixtures as buildable crates; 10 harder fixtures and 2 noisy diffs; three-mode eval harness; decision rules (§10)
+- [x] Three-mode eval: three matrices on two models, published in the README
+- [ ] Make Jev's output safe for a smaller model (§10, second result)
 - [x] Adopt the redesigned questions.rs, Cargo.toml and clippy.toml; new verification model
 - [x] Live eval on the new question ids
 - [x] CI and release workflows

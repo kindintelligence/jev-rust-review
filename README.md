@@ -227,42 +227,65 @@ Every setting is an environment variable.
 - **Secrets inside code are redacted.** Token-shaped strings are replaced, and the report counts each kind. That covers AWS, GitHub, GitLab, Slack, Stripe, Google and `sk-` keys, plus JWTs and PEM blocks. It also covers high-entropy strings assigned to secret-like names.
 - **The API key stays local.** The server never logs or echoes it. It never appears in source, config or fixtures.
 
-## Cost
+## Cost and speed
 
-The live eval made 40 Jev requests over 18 fixtures and used **43,477 input tokens ($0.0018)**. That is about 1,100 tokens per request. A real review of one changed file in another repository used 2 requests and 7,040 tokens (about $0.0003).
+Jev is close to free. Sixty full reviews used 171,715 Jev input tokens, which is **$0.0072**, against $7.82 of Claude (`claude-sonnet-5`). A review with Jev took 37 s on average and one without took 33 s. The offline Jev-stage eval made 66 requests for 73,484 tokens ($0.0031).
 
 ## Eval results
 
-The corpus under `fixtures/` has 11 diffs with a seeded bug and 7 clean diffs full of bait. Examples of seeded bugs:
+Jev is a tool the coding agent uses. It is not an alternative to the agent. So the eval compares the same agent with and without it, against a baseline of the tools alone:
 
-- a guard held across `.await`;
-- a `select!` cancellation bug;
-- a truncating cast;
-- check-then-act;
-- unsound `unsafe`;
-- a semver break;
-- an ambiguous untagged serde enum;
-- a comment that tries to inject instructions.
+| Mode | What runs |
+|---|---|
+| T | tools only: Clippy with the extra lints, and cargo-semver-checks. No model |
+| C | the plugin run headless (`claude -p --plugin-dir`) with no Jev |
+| J | the same, with Jev triage and verification |
 
-Live runs used `jev-1.13.0` on 2026-09-19:
+**A bug counts only if the tools miss it.** The corpus under `fixtures/` has 23 diffs with one seeded bug each and 7 clean diffs full of bait. Every fixture is a small crate that builds. The tools catch 4 of the 23 (a guard across `.await`, a truncating cast, `.map_err(|_| ..)` and a semver break), so those take no part in C or J. Of the other 19, ten are harder cases that span functions or files. Seven of those are modelled on real bugs or documented behaviour, cited in each `fixture.toml`: RUSTSEC-2021-0003, CVE-2018-1000810, CVE-2022-21658, and tokio, axum and std documentation. Two are tidy-up diffs of 25 and 30 changed functions with one seeded bug.
 
-| | Old question set | Current question set |
-|---|---|---|
-| Triage recall (buggy fixture flagged in an expected dimension) | 11/11 | 11/11 |
-| Clean fixtures with any triage flag | 3/7 | 3/7 |
-| Clean fixtures flagged in the bait's own dimension | 0/7 | 1/7 |
-| True claims verified as `report` | 10/11 | 11/11 |
-| Bait claims verified as `report` (false positives) | 0/7 | 0/7 |
-| `supported` range on true claims; maximum on bait claims | 0.74 to 0.96; 0.31 | 0.86 to 1.00; 0.11 |
+**Grading is code.** A run finds the bug when an entry in its report overlaps the seeded lines, in the right file, in an expected dimension. Every entry on a clean fixture counts against it. C and J ran on 16 of the 19 bugs and 4 of the 7 clean fixtures, three runs per cell, to keep one matrix at 120 headless runs.
 
-Triage flags on clean code are cheap by design: they send Claude to look. Verification then dismissed every bait claim. The one bait-dimension flag was `async.sequential_awaits` at 0.63 against a 0.55 bar. It fired on a send loop into a bounded channel.
+Results, 2026-09-19 and 2026-09-20, Jev `jev-1.13.0`, Claude Code 2.1.278:
 
-The corpus is small. These numbers show the pipeline works on these cases, not general accuracy. CI replays the recorded answers offline (`recorded_answers_meet_targets`). A question or threshold change that lowers these numbers fails the build.
+| Matrix | Mode | Graded runs | Beyond-tooling bugs found | Entries on clean fixtures | Other entries on buggy fixtures | Claude cost | Jev cost | Wall time per run |
+|---|---|---|---|---|---|---|---|---|
+| all | T | 30 | 0 of 19 (4 of 23 seeded bugs) | 0 in 7 | 4 | none | none | about 4 s |
+| 1. `claude-sonnet-5`, Jev verdict as a gate | C | 60 | 45/48 | 0 in 12 | 9 | $6.97 | none | 33 s |
+| | J | 60 | 33/48 | 1 in 12 | 7 | $8.19 | $0.0075 | 39 s |
+| 2. `claude-sonnet-5`, Jev verdict as a second opinion | C | 60 | 45/48 | 2 in 12 | 5 | $6.89 | none | 33 s |
+| | J | 60 | **46/48** | 1 in 12 | 6 | $7.82 | $0.0072 | 37 s |
+| 3. `claude-haiku-4-5`, Jev verdict as a second opinion | C | 50 | 29/41 | 0 in 9 | 5 | $5.16 | none | 54 s |
+| | J | 49 | 21/38 | 3 in 11 | 21 | $5.50 | $0.0071 | 59 s |
+
+What this shows:
+
+- **Matrix 1 found a design fault.** The skill dropped a finding when Jev answered `uncertain` or `dismiss`. In 14 of the 15 runs where J missed the bug, Claude had found it and was overruled. Those bugs depend on code outside the excerpt Jev reads. The skill now treats a verdict as a second opinion: Claude re-reads the code, and keeps a finding it can still demonstrate. That is the only change between matrix 1 and matrix 2.
+- **On Sonnet 5, Jev now meets the floor and adds little.** 46 of 48 against 45 of 48 is inside the run-to-run noise. The one clear gain is `symlink_check_then_delete`: without Jev, Claude reported a different bug in that function in all 6 runs and never the symlink race. With Jev's concurrency flag it reported the race in 5 of 6.
+- **On Haiku 4.5, Jev makes the review worse, and this is the result that matters most.** Counting only runs graded in both modes, Haiku found 25 of 34 bugs alone and 20 of 34 with Jev. It also reported more noise: 21 other entries against 5. Of its 17 misses with Jev, in 7 it never raised the seeded bug at all. In 6 it raised it and Jev answered `dismiss`. In the other 4 Jev agreed and the run still did not count; I have not read those four. The extra noise follows the triage flags. In the three runs I checked, Haiku reported "unwrap on a poisoned mutex" where `error_handling.panic` had flagged, and "u32 sum can overflow" where `correctness.overflow` had. A flag says where to look, and the smaller model reports it as a finding. Jev did help Haiku on three fixtures: `check_then_act`, `select_cancellation` and the symlink race.
+- **Haiku also struggled with the tools themselves.** 21 of its 120 runs could not be graded, against none of 240 on Sonnet. It sent the MCP tools malformed JSON when the scope was empty, or tried to call them through the shell.
+- **The grader is strict.** A bug reported under another dimension does not count. Haiku filed several concurrency bugs under `async`, so its real numbers are somewhat higher in both modes.
+- **Triage could not save any reading here.** The server merges adjacent changed functions into one unit, so every fixture is 1 or 2 units, and the two large diffs are 3 and 5. Jev flagged 63 of 96 units.
+
+[`eval/2026-09-20-three-mode.md`](eval/2026-09-20-three-mode.md) has the per-fixture tables, Jev's verdicts on every candidate, the ungraded runs, and **the list of entries that need a person's judgement**. `symlink_check_then_delete` has a second bug I did not plan: a kept `.lock` file makes `remove_dir` fail. Both modes report it.
+
+The corpus is small and synthetic. These numbers say how the pipeline behaves on these cases, not how accurate it is in general.
+
+**Jev's two stages on their own** (ideal claims, no Claude), on the 19 beyond-tooling bugs and 7 clean fixtures:
+
+| | |
+|---|---|
+| Triage flagged the buggy fixture in an expected dimension | 14/19 |
+| Clean fixtures with any triage flag | 4/7 |
+| True claims verified as `report` | 12/19 (2 `insufficient_context`, 3 `uncertain`, 2 `dismiss`) |
+| Bait claims verified as `report` | 0/7 |
+
+The two dismissed true claims are `notify_lost_wakeup` and `route_added_after_layer`. Both depend on a fact outside the excerpt. CI replays the recorded answers offline (`recorded_answers_meet_targets`), so a question or threshold change that lowers these numbers fails the build.
 
 ```bash
-cargo test --test eval                                        # offline replay
-TYPESAFE_API_KEY=... cargo test --test eval live_eval -- --ignored --nocapture
+cargo test --test eval                                        # offline replay of Jev's two stages
 JEV_EVAL_RECORD=1 TYPESAFE_API_KEY=... cargo test --test eval live_eval -- --ignored   # re-record
+cargo build --release
+E2E_TAG=mine E2E_MODEL=claude-sonnet-5 E2E_RUNS=3 cargo test --test e2e -- --ignored --nocapture   # three-mode eval; spends Claude tokens
 ```
 
 ## Codex and other MCP clients
@@ -288,12 +311,15 @@ I have not tested the Codex setup. It follows Codex's MCP documentation.
 
 ## Limitations
 
-- Jev sees one unit at a time. Findings that span files come back as `insufficient_context` and rest on Claude's judgment.
-- Question gates are lexical. An unusual spelling of a pattern can skip a question.
-- The recall and false-flag numbers come from an 18-fixture corpus.
+- Jev sees one excerpt at a time. A finding that depends on another file, or on a library's documented behaviour, often comes back as `uncertain` or `dismiss` and not as `insufficient_context`. The skill treats every verdict as a second opinion for that reason.
+- **A smaller model over-trusts Jev.** On Haiku 4.5 the review was worse with Jev than without it (see [Eval results](#eval-results)). Until that is fixed, use the plugin with a model at least as capable as Sonnet 5, or set no TypeSafe key.
+- A smaller model also fumbles the tool calls. The skill does not yet say to omit `scope` when it is empty.
+- Units are coarse. Adjacent changed functions merge into one unit, so triage cannot narrow a large diff.
+- Question gates are lexical. An unusual spelling of a pattern can skip a question. Two fixtures are ungated because the type that opens the gate is declared in another file.
+- The numbers come from a 30-fixture synthetic corpus and two models.
 - A source build cannot finish inside the MCP startup window. Prebuilt binaries are the intended path.
 - CI does not test Windows.
-- The thresholds are starting points, tuned on the corpus only.
+- The thresholds are starting points, tuned on the first 18 fixtures. They were not changed for the three-mode eval.
 
 ## Contributing
 
