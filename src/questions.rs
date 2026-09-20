@@ -533,7 +533,9 @@ pub static CORE: &[QuestionSpec] = &[
         "The check and the action happen under one lock or one atomic operation, or the state is not shared.",
     )
     .gate(&[
-        &[LOCK_CALL, r"\.load\(", r"contains", r"\.get\(", r"exists", r"is_some", r"is_none"],
+        // The last four are the filesystem checks: a path that is inspected
+        // and then used again by name is the classic race.
+        &[LOCK_CALL, r"\.load\(", r"contains", r"\.get\(", r"exists", r"is_some", r"is_none", r"metadata\(", r"is_file\(\)", r"is_dir\(\)", r"is_symlink\(\)"],
         &[r"Mutex", r"RwLock", r"Atomic", r"DashMap", r"Arc<", r"\bstatic\b", r"\bfs::", r"\bPath"],
     ])
     .beyond("Each step is memory safe and type correct, so the compiler accepts it; the race lives in the gap between two statements, which no lint models.")
@@ -579,6 +581,19 @@ pub static CORE: &[QuestionSpec] = &[
     .gate(&[&[LOCK_CALL], &[r"Mutex", r"RwLock"]])
     .beyond("Clippy's `significant_drop_tightening` sees where a guard could be dropped sooner; it does not know which calls are slow or take another lock.")
     .overlaps(&["clippy::significant_drop_tightening", "clippy::await_holding_lock"]),
+    // Jev sees one unit, so it cannot compare lock orders. It can say that
+    // a unit takes a lock while it holds another, which tells the reviewer
+    // to check the order at every other site. `.lock()` opens the gate on
+    // its own, because the lock's type is often declared in another file.
+    Q::noul(
+        "concurrency.lock_order",
+        D::Concurrency,
+        "Does the changed code in `code` acquire a lock while it still holds another lock, so that it can deadlock with other code that takes the same locks in the opposite order?",
+        "A second lock is acquired while the guard of another lock is still alive.",
+        "Each lock guard is dropped before another lock is acquired, or only one lock is taken.",
+    )
+    .gate(&[&[r"\.lock\(\)", r"RwLock"], &[LOCK_CALL]])
+    .beyond("Holding two locks is valid code, and the order another function takes them in is outside anything a lint compares."),
     // ---- unsafe ------------------------------------------------------------
     // Three narrow questions instead of one that lists five kinds of UB.
     // Undocumented `unsafe` is Clippy's (`undocumented_unsafe_blocks`,

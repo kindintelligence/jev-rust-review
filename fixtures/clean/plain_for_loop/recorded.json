@@ -7,7 +7,7 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.28
+          "noul": 0.26
         },
         "idiom.clarity": {
           "type": "score",
@@ -44,25 +44,25 @@
         },
         "severity": {
           "type": "score",
-          "score": 0.02,
+          "score": 0.03,
           "probabilities": {
             "0": 0.98,
             "1": 0.01,
             "2": 0.01,
             "3": 0.0
           },
-          "confidence": 0.98
+          "confidence": 0.97
         },
         "category": {
           "type": "choice",
           "choice": "style_preference",
           "probabilities": {
-            "debatable_tradeoff": 0.06,
+            "debatable_tradeoff": 0.05,
             "real_defect": 0.0,
             "remote_risk": 0.0,
-            "style_preference": 0.94
+            "style_preference": 0.95
           },
-          "confidence": 0.92
+          "confidence": 0.93
         }
       },
       "usage": {

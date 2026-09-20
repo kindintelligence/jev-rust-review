@@ -11,10 +11,10 @@
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.01,
+          "score": 0.0,
           "probabilities": {
-            "0": 0.99,
-            "1": 0.01,
+            "0": 1.0,
+            "1": 0.0,
             "2": 0.0
           },
           "confidence": 0.99,
@@ -46,22 +46,22 @@
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.27,
+          "score": 0.3,
           "probabilities": {
-            "0": 0.74,
-            "1": 0.25,
+            "0": 0.71,
+            "1": 0.28,
             "2": 0.01
           },
-          "confidence": 0.6,
+          "confidence": 0.54,
           "legend": {}
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.1
+          "noul": 0.11
         },
         "tokio.select_not_cancel_safe": {
           "type": "noul",
-          "noul": 0.87
+          "noul": 0.9
         }
       },
       "usage": {
@@ -73,17 +73,17 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.15
+          "noul": 0.13
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.18,
+          "score": 0.15,
           "probabilities": {
-            "0": 0.87,
-            "1": 0.08,
-            "2": 0.05
+            "0": 0.9,
+            "1": 0.06,
+            "2": 0.04
           },
-          "confidence": 0.73,
+          "confidence": 0.78,
           "legend": {}
         }
       },
@@ -99,32 +99,32 @@
           "choice": "supported",
           "probabilities": {
             "insufficient_context": 0.01,
-            "refuted": 0.22,
-            "supported": 0.77
+            "refuted": 0.21,
+            "supported": 0.78
           },
           "confidence": 0.66
         },
         "severity": {
           "type": "score",
-          "score": 2.82,
+          "score": 2.79,
           "probabilities": {
             "0": 0.01,
-            "1": 0.04,
+            "1": 0.05,
             "2": 0.08,
-            "3": 0.87
+            "3": 0.86
           },
-          "confidence": 0.82
+          "confidence": 0.79
         },
         "category": {
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
             "debatable_tradeoff": 0.01,
-            "real_defect": 0.88,
-            "remote_risk": 0.11,
+            "real_defect": 0.87,
+            "remote_risk": 0.12,
             "style_preference": 0.0
           },
-          "confidence": 0.84
+          "confidence": 0.82
         }
       },
       "usage": {

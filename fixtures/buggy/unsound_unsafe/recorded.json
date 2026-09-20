@@ -11,21 +11,21 @@
         },
         "correctness.bounds": {
           "type": "noul",
-          "noul": 0.92
+          "noul": 0.91
         },
         "unsafe.memory_access": {
           "type": "noul",
-          "noul": 0.96
+          "noul": 0.95
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.18,
+          "score": 0.14,
           "probabilities": {
-            "0": 0.83,
-            "1": 0.17,
+            "0": 0.86,
+            "1": 0.14,
             "2": 0.0
           },
-          "confidence": 0.74,
+          "confidence": 0.79,
           "legend": {}
         },
         "api.breaking_change": {
@@ -44,11 +44,11 @@
           "type": "choice",
           "choice": "supported",
           "probabilities": {
-            "insufficient_context": 0.01,
+            "insufficient_context": 0.0,
             "refuted": 0.01,
-            "supported": 0.98
+            "supported": 0.99
           },
-          "confidence": 0.97
+          "confidence": 0.98
         },
         "severity": {
           "type": "score",
@@ -66,11 +66,11 @@
           "choice": "real_defect",
           "probabilities": {
             "debatable_tradeoff": 0.01,
-            "real_defect": 0.96,
-            "remote_risk": 0.03,
+            "real_defect": 0.97,
+            "remote_risk": 0.02,
             "style_preference": 0.0
           },
-          "confidence": 0.95
+          "confidence": 0.96
         }
       },
       "usage": {

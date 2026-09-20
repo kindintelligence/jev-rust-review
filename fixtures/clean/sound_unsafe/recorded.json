@@ -7,7 +7,7 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.06
+          "noul": 0.07
         },
         "correctness.bounds": {
           "type": "noul",
@@ -19,10 +19,10 @@
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.38,
+          "score": 0.37,
           "probabilities": {
-            "0": 0.62,
-            "1": 0.38,
+            "0": 0.63,
+            "1": 0.37,
             "2": 0.0
           },
           "confidence": 0.44,
@@ -30,7 +30,7 @@
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.15
+          "noul": 0.13
         }
       },
       "usage": {
@@ -52,25 +52,25 @@
         },
         "severity": {
           "type": "score",
-          "score": 2.79,
+          "score": 2.82,
           "probabilities": {
-            "0": 0.06,
-            "1": 0.01,
-            "2": 0.02,
-            "3": 0.91
+            "0": 0.05,
+            "1": 0.02,
+            "2": 0.01,
+            "3": 0.92
           },
-          "confidence": 0.79
+          "confidence": 0.82
         },
         "category": {
           "type": "choice",
           "choice": "remote_risk",
           "probabilities": {
-            "debatable_tradeoff": 0.19,
-            "real_defect": 0.19,
-            "remote_risk": 0.59,
-            "style_preference": 0.03
+            "debatable_tradeoff": 0.22,
+            "real_defect": 0.21,
+            "remote_risk": 0.53,
+            "style_preference": 0.04
           },
-          "confidence": 0.44
+          "confidence": 0.36
         }
       },
       "usage": {

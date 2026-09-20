@@ -30,7 +30,7 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.65
+          "noul": 0.62
         },
         "correctness.overflow": {
           "type": "noul",
@@ -42,18 +42,18 @@
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.11,
+          "score": 0.13,
           "probabilities": {
-            "0": 0.89,
-            "1": 0.11,
+            "0": 0.88,
+            "1": 0.12,
             "2": 0.0
           },
-          "confidence": 0.83,
+          "confidence": 0.81,
           "legend": {}
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.22
+          "noul": 0.25
         }
       },
       "usage": {
@@ -68,32 +68,32 @@
           "choice": "supported",
           "probabilities": {
             "insufficient_context": 0.01,
-            "refuted": 0.1,
-            "supported": 0.89
+            "refuted": 0.14,
+            "supported": 0.85
           },
-          "confidence": 0.84
+          "confidence": 0.78
         },
         "severity": {
           "type": "score",
-          "score": 2.38,
+          "score": 2.42,
           "probabilities": {
             "0": 0.0,
             "1": 0.0,
-            "2": 0.62,
-            "3": 0.38
+            "2": 0.58,
+            "3": 0.42
           },
-          "confidence": 0.61
+          "confidence": 0.57
         },
         "category": {
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
             "debatable_tradeoff": 0.0,
-            "real_defect": 0.99,
-            "remote_risk": 0.01,
+            "real_defect": 0.98,
+            "remote_risk": 0.02,
             "style_preference": 0.0
           },
-          "confidence": 0.98
+          "confidence": 0.97
         }
       },
       "usage": {

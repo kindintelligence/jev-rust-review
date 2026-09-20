@@ -130,17 +130,18 @@ async fn corpus_gates_cover_expected_dimensions() {
         );
     }
     // Bugs whose dimension no lexical gate opens for, so triage cannot flag
-    // them and only Claude's own reading can find them. This is a measured
-    // gap, kept visible; widening a gate to fit a fixture would be tuning.
+    // them and only Claude's own reading can find them. A new entry here is
+    // a measured gap and stays visible.
     assert_eq!(
         ungated, KNOWN_UNGATED,
         "the set of ungated fixtures changed"
     );
 }
 
-/// The type that opens the gate (`Mutex`) is declared in a file the change
-/// does not touch.
-const KNOWN_UNGATED: &[&str] = &["lock_order_inversion"];
+/// Empty since 2026-09-21: `.lock()` and `.notified()` open a concurrency
+/// gate on their own, because the lock or `Notify` is often declared in a
+/// file the change does not touch.
+const KNOWN_UNGATED: &[&str] = &[];
 
 /// Question-id prefixes that count toward a dimension (profiles included).
 fn dimension_prefixes(d: &str) -> Vec<String> {
@@ -345,11 +346,10 @@ async fn recorded_answers_meet_targets() {
     }
     eprintln!("{}\n{}", metrics.rows.join("\n"), metrics.summary());
     // Floors, measured against jev-1.13.0 on 2026-09-21 (see README "Eval
-    // results"). The corpus now holds only bugs the tools miss, many of
-    // which span functions or files, so these are lower than they were on
-    // the first corpus. They record what Jev does; they were not tuned.
+    // results"). The replay is deterministic, so they are what Jev answered
+    // and leave no slack.
     assert!(
-        metrics.buggy_flagged >= 18,
+        metrics.buggy_flagged >= 19,
         "triage recall regressed: {}/{}",
         metrics.buggy_flagged,
         metrics.buggy

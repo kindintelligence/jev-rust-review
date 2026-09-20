@@ -7,7 +7,7 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.16
+          "noul": 0.17
         },
         "idiom.clarity": {
           "type": "score",
@@ -40,7 +40,7 @@
             "1": 0.16,
             "2": 0.01
           },
-          "confidence": 0.73,
+          "confidence": 0.72,
           "legend": {}
         },
         "api.breaking_change": {
@@ -49,11 +49,11 @@
         },
         "axum.layer_order": {
           "type": "noul",
-          "noul": 0.48
+          "noul": 0.51
         },
         "axum.route_after_layer": {
           "type": "noul",
-          "noul": 0.95
+          "noul": 0.96
         }
       },
       "usage": {

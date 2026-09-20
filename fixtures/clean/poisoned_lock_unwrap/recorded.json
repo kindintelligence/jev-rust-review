@@ -11,7 +11,7 @@
         },
         "correctness.drop_order": {
           "type": "noul",
-          "noul": 0.07
+          "noul": 0.08
         },
         "type_design.loose_types": {
           "type": "noul",
@@ -19,17 +19,21 @@
         },
         "error_handling.swallowed": {
           "type": "noul",
-          "noul": 0.36
+          "noul": 0.42
         },
         "error_handling.panic": {
           "type": "noul",
-          "noul": 0.31
+          "noul": 0.34
         },
         "concurrency.check_then_act": {
           "type": "noul",
-          "noul": 0.11
+          "noul": 0.1
         },
         "concurrency.lock_scope": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "concurrency.lock_order": {
           "type": "noul",
           "noul": 0.05
         },
@@ -64,29 +68,29 @@
             "refuted": 0.02,
             "supported": 0.97
           },
-          "confidence": 0.96
+          "confidence": 0.95
         },
         "severity": {
           "type": "score",
-          "score": 1.86,
+          "score": 1.9,
           "probabilities": {
             "0": 0.0,
-            "1": 0.15,
-            "2": 0.83,
+            "1": 0.11,
+            "2": 0.87,
             "3": 0.02
           },
-          "confidence": 0.83
+          "confidence": 0.86
         },
         "category": {
           "type": "choice",
           "choice": "remote_risk",
           "probabilities": {
             "debatable_tradeoff": 0.0,
-            "real_defect": 0.08,
-            "remote_risk": 0.92,
+            "real_defect": 0.07,
+            "remote_risk": 0.93,
             "style_preference": 0.0
           },
-          "confidence": 0.89
+          "confidence": 0.9
         }
       },
       "usage": {

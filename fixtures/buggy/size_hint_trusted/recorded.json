@@ -7,11 +7,11 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.36
+          "noul": 0.37
         },
         "error_handling.swallowed": {
           "type": "noul",
-          "noul": 0.44
+          "noul": 0.43
         },
         "idiom.clarity": {
           "type": "score",
@@ -38,11 +38,11 @@
         },
         "correctness.overflow": {
           "type": "noul",
-          "noul": 0.31
+          "noul": 0.34
         },
         "unsafe.memory_access": {
           "type": "noul",
-          "noul": 0.41
+          "noul": 0.38
         },
         "unsafe.aliasing": {
           "type": "noul",
@@ -50,18 +50,18 @@
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.76,
+          "score": 0.74,
           "probabilities": {
-            "0": 0.25,
-            "1": 0.74,
+            "0": 0.27,
+            "1": 0.72,
             "2": 0.01
           },
-          "confidence": 0.61,
+          "confidence": 0.58,
           "legend": {}
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.08
+          "noul": 0.07
         }
       },
       "usage": {
@@ -79,29 +79,29 @@
             "refuted": 0.04,
             "supported": 0.96
           },
-          "confidence": 0.93
+          "confidence": 0.94
         },
         "severity": {
           "type": "score",
-          "score": 2.95,
+          "score": 2.97,
           "probabilities": {
             "0": 0.0,
-            "1": 0.01,
+            "1": 0.0,
             "2": 0.02,
-            "3": 0.97
+            "3": 0.98
           },
-          "confidence": 0.95
+          "confidence": 0.97
         },
         "category": {
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
             "debatable_tradeoff": 0.0,
-            "real_defect": 0.9,
-            "remote_risk": 0.1,
+            "real_defect": 0.92,
+            "remote_risk": 0.08,
             "style_preference": 0.0
           },
-          "confidence": 0.87
+          "confidence": 0.88
         }
       },
       "usage": {

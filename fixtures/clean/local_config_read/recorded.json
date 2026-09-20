@@ -30,7 +30,7 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.24
+          "noul": 0.23
         },
         "idiom.clarity": {
           "type": "score",
@@ -45,15 +45,15 @@
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.06
+          "noul": 0.07
         },
         "security.injection": {
           "type": "noul",
-          "noul": 0.05
+          "noul": 0.04
         },
         "security.unbounded_input": {
           "type": "noul",
-          "noul": 0.13
+          "noul": 0.14
         }
       },
       "usage": {
@@ -67,20 +67,20 @@
           "type": "choice",
           "choice": "supported",
           "probabilities": {
-            "insufficient_context": 0.18,
+            "insufficient_context": 0.14,
             "refuted": 0.06,
-            "supported": 0.76
+            "supported": 0.8
           },
-          "confidence": 0.64
+          "confidence": 0.7
         },
         "severity": {
           "type": "score",
-          "score": 1.76,
+          "score": 1.8,
           "probabilities": {
             "0": 0.03,
-            "1": 0.37,
+            "1": 0.35,
             "2": 0.41,
-            "3": 0.19
+            "3": 0.21
           },
           "confidence": 0.39
         },
@@ -89,11 +89,11 @@
           "choice": "remote_risk",
           "probabilities": {
             "debatable_tradeoff": 0.01,
-            "real_defect": 0.04,
-            "remote_risk": 0.95,
+            "real_defect": 0.05,
+            "remote_risk": 0.94,
             "style_preference": 0.0
           },
-          "confidence": 0.93
+          "confidence": 0.92
         }
       },
       "usage": {

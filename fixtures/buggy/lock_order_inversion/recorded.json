@@ -7,11 +7,11 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.68
+          "noul": 0.69
         },
         "correctness.overflow": {
           "type": "noul",
-          "noul": 0.34
+          "noul": 0.3
         },
         "correctness.drop_order": {
           "type": "noul",
@@ -19,7 +19,11 @@
         },
         "error_handling.panic": {
           "type": "noul",
-          "noul": 0.38
+          "noul": 0.37
+        },
+        "concurrency.lock_order": {
+          "type": "noul",
+          "noul": 0.85
         },
         "idiom.clarity": {
           "type": "score",
@@ -34,7 +38,7 @@
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.07
+          "noul": 0.06
         }
       },
       "usage": {
@@ -49,32 +53,32 @@
           "choice": "supported",
           "probabilities": {
             "insufficient_context": 0.01,
-            "refuted": 0.06,
-            "supported": 0.93
+            "refuted": 0.07,
+            "supported": 0.92
           },
-          "confidence": 0.9
+          "confidence": 0.89
         },
         "severity": {
           "type": "score",
-          "score": 2.91,
+          "score": 2.92,
           "probabilities": {
             "0": 0.0,
-            "1": 0.04,
+            "1": 0.03,
             "2": 0.01,
-            "3": 0.95
+            "3": 0.96
           },
-          "confidence": 0.91
+          "confidence": 0.92
         },
         "category": {
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
             "debatable_tradeoff": 0.0,
-            "real_defect": 0.95,
-            "remote_risk": 0.05,
+            "real_defect": 0.93,
+            "remote_risk": 0.07,
             "style_preference": 0.0
           },
-          "confidence": 0.93
+          "confidence": 0.91
         }
       },
       "usage": {

@@ -7,17 +7,17 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.08
+          "noul": 0.1
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.07,
+          "score": 0.06,
           "probabilities": {
-            "0": 0.93,
-            "1": 0.06,
+            "0": 0.94,
+            "1": 0.05,
             "2": 0.01
           },
-          "confidence": 0.9,
+          "confidence": 0.91,
           "legend": {}
         },
         "security.injection": {
@@ -34,17 +34,17 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.47
+          "noul": 0.35
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.2,
+          "score": 0.14,
           "probabilities": {
-            "0": 0.81,
-            "1": 0.19,
+            "0": 0.87,
+            "1": 0.13,
             "2": 0.0
           },
-          "confidence": 0.71,
+          "confidence": 0.79,
           "legend": {}
         },
         "api.breaking_change": {
@@ -53,7 +53,7 @@
         },
         "security.injection": {
           "type": "noul",
-          "noul": 0.06
+          "noul": 0.07
         }
       },
       "usage": {
@@ -68,32 +68,32 @@
           "choice": "supported",
           "probabilities": {
             "insufficient_context": 0.01,
-            "refuted": 0.02,
-            "supported": 0.97
+            "refuted": 0.03,
+            "supported": 0.96
           },
           "confidence": 0.94
         },
         "severity": {
           "type": "score",
-          "score": 2.74,
+          "score": 2.73,
           "probabilities": {
             "0": 0.0,
             "1": 0.03,
             "2": 0.21,
             "3": 0.76
           },
-          "confidence": 0.74
+          "confidence": 0.73
         },
         "category": {
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
             "debatable_tradeoff": 0.0,
-            "real_defect": 0.98,
-            "remote_risk": 0.02,
+            "real_defect": 0.99,
+            "remote_risk": 0.01,
             "style_preference": 0.0
           },
-          "confidence": 0.97
+          "confidence": 0.98
         }
       },
       "usage": {

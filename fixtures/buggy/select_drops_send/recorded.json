@@ -17,7 +17,7 @@
             "1": 0.0,
             "2": 0.0
           },
-          "confidence": 1.0,
+          "confidence": 0.99,
           "legend": {}
         },
         "api.breaking_change": {
@@ -42,11 +42,11 @@
         },
         "async.select_cancellation": {
           "type": "noul",
-          "noul": 0.6
+          "noul": 0.65
         },
         "async.sequential_awaits": {
           "type": "noul",
-          "noul": 0.34
+          "noul": 0.32
         },
         "idiom.clarity": {
           "type": "score",
@@ -56,16 +56,16 @@
             "1": 0.54,
             "2": 0.04
           },
-          "confidence": 0.31,
+          "confidence": 0.32,
           "legend": {}
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.1
+          "noul": 0.09
         },
         "tokio.select_not_cancel_safe": {
           "type": "noul",
-          "noul": 0.33
+          "noul": 0.32
         }
       },
       "usage": {
@@ -87,25 +87,25 @@
         },
         "severity": {
           "type": "score",
-          "score": 2.86,
+          "score": 2.83,
           "probabilities": {
             "0": 0.01,
-            "1": 0.05,
+            "1": 0.06,
             "2": 0.03,
-            "3": 0.91
+            "3": 0.9
           },
-          "confidence": 0.86
+          "confidence": 0.83
         },
         "category": {
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
-            "debatable_tradeoff": 0.01,
-            "real_defect": 0.98,
+            "debatable_tradeoff": 0.0,
+            "real_defect": 0.99,
             "remote_risk": 0.01,
             "style_preference": 0.0
           },
-          "confidence": 0.97
+          "confidence": 0.98
         }
       },
       "usage": {

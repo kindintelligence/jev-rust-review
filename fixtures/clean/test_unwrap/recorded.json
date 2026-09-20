@@ -33,33 +33,33 @@
           "type": "choice",
           "choice": "refuted",
           "probabilities": {
-            "insufficient_context": 0.01,
-            "refuted": 0.9,
-            "supported": 0.09
+            "insufficient_context": 0.0,
+            "refuted": 0.89,
+            "supported": 0.11
           },
-          "confidence": 0.85
+          "confidence": 0.83
         },
         "severity": {
           "type": "score",
-          "score": 0.66,
+          "score": 0.68,
           "probabilities": {
             "0": 0.63,
-            "1": 0.08,
-            "2": 0.29,
+            "1": 0.07,
+            "2": 0.3,
             "3": 0.0
           },
-          "confidence": 0.34
+          "confidence": 0.32
         },
         "category": {
           "type": "choice",
           "choice": "remote_risk",
           "probabilities": {
-            "debatable_tradeoff": 0.29,
-            "real_defect": 0.04,
-            "remote_risk": 0.44,
-            "style_preference": 0.23
+            "debatable_tradeoff": 0.33,
+            "real_defect": 0.05,
+            "remote_risk": 0.37,
+            "style_preference": 0.25
           },
-          "confidence": 0.25
+          "confidence": 0.16
         }
       },
       "usage": {
