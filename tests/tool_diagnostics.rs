@@ -81,9 +81,18 @@ fn repo(manifest: &str, after: &str) -> TestRepo {
     r
 }
 
+/// Cargo builds inside the temporary repository, so nothing outlives the
+/// test. Without this, a `build.build-dir` in the user's cargo config leaves
+/// one build directory behind per test repository.
+fn cfg_for(r: &TestRepo) -> Config {
+    let mut cfg = Config::default();
+    cfg.cargo_target_dir = Some(r.path().join("target").display().to_string());
+    cfg
+}
+
 async fn diagnose(r: &TestRepo) -> DiagnosticsOutput {
     // cargo-semver-checks has its own test; it is slow and optional.
-    let mut cfg = Config::default();
+    let mut cfg = cfg_for(r);
     cfg.run_semver_checks = false;
     let out = review::diagnostics(&cfg, &r.path(), None).await.unwrap();
     assert_eq!(out.status, "ok", "{:?}", out.reason);
@@ -271,7 +280,7 @@ async fn a_changed_pub_surface_goes_to_semver_checks_when_installed() {
     }
     let renamed = AFTER.replace("pub fn untouched(", "pub fn renamed(");
     let r = repo(MANIFEST, &renamed);
-    let out = review::diagnostics(&Config::default(), &r.path(), None)
+    let out = review::diagnostics(&cfg_for(&r), &r.path(), None)
         .await
         .unwrap();
     let semver = out
