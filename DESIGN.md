@@ -516,4 +516,4 @@ Still open after this run: nothing from the list above. One thing the run showed
 - [x] Secret scan of history; repo made public (2026-09-19)
 - [x] CI green on GitHub (run 35415756948; after the fourth change, run 35539152798 on `7737839`)
 - [x] Fourth change and re-run on both models (2026-09-21): Haiku 43/48 with Jev against 36/48, Sonnet 47/48 against 45/48 (§10, fourth result)
-- [ ] First tagged release (prebuilt binaries)
+- [x] First tagged release: v0.1.0 on `1bed748` (2026-09-21), five prebuilt binaries and `SHA256SUMS` (release run 35540017569). The Windows asset was downloaded, checked against its checksum and run
