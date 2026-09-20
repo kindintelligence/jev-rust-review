@@ -19,7 +19,7 @@ git diff ──> cargo_diagnostics: clippy + semver-checks, changed lines only �
                                               │
                           flagged (unit, dimension) pairs, minus what a tool reported
                                               v
-                              Claude inspects the real code (+ tests)
+                 Claude reviews every changed unit, flagged first (+ tests)
                                               │
                                      candidate findings
                                               v
@@ -44,11 +44,11 @@ Every Jev question carries a sentence that says why no compiler check, lint or c
 
 Jev answers typed questions about a piece of state: yes/no probabilities, choices and ordered scores. It never writes prose. One request can carry many questions, and input costs $0.042 per million tokens. That suits two narrow jobs.
 
-- **Triage finds where to look.** Each changed unit gets up to 41 core questions plus framework questions. Each question targets one defect that no tool reports. Examples: "can a `select!` branch that loses the race lose data?" and "is this check separated from the action it guards?". Where a tool finds the pattern, the question keeps only the judgement: Clippy finds the lossy cast, and Jev is asked whether the value can be out of range. Lexical gates decide which questions apply. The bar to flag is low, because a missed bug costs more than a wasted look.
+- **Triage finds where to look first.** Each changed unit gets up to 42 core questions plus framework questions. Each question targets one defect that no tool reports. Examples: "can a `select!` branch that loses the race lose data?" and "is this check separated from the action it guards?". Where a tool finds the pattern, the question keeps only the judgement: Clippy finds the lossy cast, and Jev is asked whether the value can be out of range. Lexical gates decide which questions apply. The bar to flag is low, because a missed bug costs more than a wasted look. A flag sets the order of reading and not its limits: a unit with no flag is still reviewed.
 - **Verification decides what you see.** Before a finding reaches you, Jev re-reads the code and answers three questions:
   - does the code contain the claimed defect (`supported`, `refuted` or `insufficient_context`);
   - how severe is it, on an ordered score;
-  - is it a real defect or a matter of taste.
+  - is it a real defect, a matter of taste, or a risk too remote to be worth your time, such as a lock poisoned by an earlier panic.
 
   The bar to report is high, because a false positive costs more than a missed nitpick.
 
@@ -229,7 +229,7 @@ Every setting is an environment variable.
 
 ## Cost and speed
 
-Jev is close to free. Sixty full reviews used 171,715 Jev input tokens, which is **$0.0072**, against $7.82 of Claude (`claude-sonnet-5`). A review with Jev took 37 s on average and one without took 33 s. The offline Jev-stage eval, with one request per changed function, made 123 requests for 117,727 tokens ($0.0049).
+Jev is close to free. Sixty full reviews used 308,839 Jev input tokens, which is **$0.0130**, against $8.08 of Claude (`claude-sonnet-5`). A review with Jev took 29 s on average and one without took 30 s. The offline Jev-stage eval, with one request per changed function, made 130 requests for 128,790 tokens ($0.0054).
 
 ## Eval results
 
@@ -241,11 +241,11 @@ Jev is a tool the coding agent uses. It is not an alternative to the agent. So t
 | C | the plugin run headless (`claude -p --plugin-dir`) with no Jev |
 | J | the same, with Jev triage and verification |
 
-**A bug counts only if the tools miss it.** The corpus under `fixtures/` has 23 diffs with one seeded bug each and 7 clean diffs full of bait. Every fixture is a small crate that builds. The tools catch 4 of the 23 (a guard across `.await`, a truncating cast, `.map_err(|_| ..)` and a semver break), so those take no part in C or J. Of the other 19, ten are harder cases that span functions or files. Seven of those are modelled on real bugs or documented behaviour, cited in each `fixture.toml`: RUSTSEC-2021-0003, CVE-2018-1000810, CVE-2022-21658, and tokio, axum and std documentation. Two are tidy-up diffs of 25 and 30 changed functions with one seeded bug.
+**A bug counts only if the tools miss it.** The corpus under `fixtures/` has 23 diffs with one seeded bug each and 10 clean diffs full of bait. Three of the clean ones carry a claim that is true but trivial, such as "this `unwrap` panics if the mutex is poisoned". Every fixture is a small crate that builds. The tools catch 4 of the 23 (a guard across `.await`, a truncating cast, `.map_err(|_| ..)` and a semver break), so those take no part in C or J. Of the other 19, ten are harder cases that span functions or files. Seven of those are modelled on real bugs or documented behaviour, cited in each `fixture.toml`: RUSTSEC-2021-0003, CVE-2018-1000810, CVE-2022-21658, and tokio, axum and std documentation. Two are tidy-up diffs of 25 and 30 changed functions with one seeded bug.
 
-**Grading is code.** A run finds the bug when an entry in its report overlaps the seeded lines, in the right file, in an expected dimension. Every entry on a clean fixture counts against it. C and J ran on 16 of the 19 bugs and 4 of the 7 clean fixtures, three runs per cell, to keep one matrix at 120 headless runs.
+**Grading is code.** A run finds the bug when an entry in its report overlaps the seeded lines, in the right file, in an expected dimension. Every entry on a clean fixture counts against it. C and J ran on 16 of the 19 bugs and 4 of the 10 clean fixtures, three runs per cell, to keep one matrix at 120 headless runs.
 
-Results, 2026-09-19 and 2026-09-20, Jev `jev-1.13.0`, Claude Code 2.1.278:
+Results, 2026-09-19 to 2026-09-21, Jev `jev-1.13.0`, Claude Code 2.1.278:
 
 | Matrix | Mode | Graded runs | Beyond-tooling bugs found | Entries on clean fixtures | Other entries on buggy fixtures | Claude cost | Jev cost | Wall time per run |
 |---|---|---|---|---|---|---|---|---|
@@ -258,33 +258,45 @@ Results, 2026-09-19 and 2026-09-20, Jev `jev-1.13.0`, Claude Code 2.1.278:
 | | J | 49 | 21/38 | 3 in 11 | 21 | $5.50 | $0.0071 | 59 s |
 | 4. `claude-haiku-4-5`, after the four changes for a smaller model | C | 59 | 26/47 | 2 in 12 | 15 | $4.85 | none | 52 s |
 | | J | 59 | **31/48** | 2 in 11 | 34 | $5.17 | $0.0141 | 54 s |
+| 5. `claude-sonnet-5`, after the fourth change | C | 60 | 45/48 | 0 in 12 | 1 | $7.08 | none | 30 s |
+| | J | 60 | **47/48** | 0 in 12 | 1 | $8.08 | $0.0130 | 29 s |
+| 6. `claude-haiku-4-5`, after the fourth change | C | 60 | 36/48 | 1 in 12 | 5 | $4.86 | none | 54 s |
+| | J | 60 | **43/48** | 1 in 12 | 4 | $5.40 | $0.0145 | 54 s |
 
 What this shows:
 
+- **Latest result (matrices 5 and 6): Jev helps the smaller model and does not hurt the larger one.** Haiku 4.5 found 43 of 48 bugs with Jev and 36 of 48 without, with the same single entry on clean fixtures and 4 other entries against 5. Sonnet 5 found 47 of 48 with Jev and 45 of 48 without, which is inside the run-to-run noise, with no entry on a clean fixture either way. All 240 runs could be graded.
+- **Matrix 4 had been misread.** It lost `notify_lost_wakeup` and `route_added_after_layer` with Jev, and the first explanation was library behaviour that Jev does not know. The cells said something simpler: in all 9 runs where triage flagged nothing, Haiku reported nothing, because the skill said to inspect flagged code. Flags now set the order of reading and not its limits. Those three fixtures went from 0 of 9 with Jev to 6 of 9.
+- **The noise is gone.** Verification has a `not_material` verdict for a claim that is true only under a condition the code gives no reason to expect. Haiku's other entries with Jev fell from 34 to 4. No seeded bug was called `not_material`.
+- **The fourth change is partly tuning on known fixtures.** Six library facts and three questions (`concurrency.lost_wakeup`, `concurrency.lock_order`, `axum.route_after_layer`) were written from documentation, after seeing which fixtures failed. They show the mechanism works. They do not show how often Jev will know the behaviour behind a bug it has not seen. DESIGN.md section 10 lists every change and what prompted it.
+- **What is left on Haiku.** `bufwriter_never_flushed` is 0 of 3 with Jev and 1 of 3 without. In one run Haiku raised the bug, Jev confirmed it, and Haiku still reported nothing.
+
+The earlier matrices, kept for the record:
+
 - **Matrix 1 found a design fault.** The skill dropped a finding when Jev answered `uncertain` or `dismiss`. In 14 of the 15 runs where J missed the bug, Claude had found it and was overruled. Those bugs depend on code outside the excerpt Jev reads. The skill now treats a verdict as a second opinion: Claude re-reads the code, and keeps a finding it can still demonstrate. That is the only change between matrix 1 and matrix 2.
-- **On Sonnet 5, Jev now meets the floor and adds little.** 46 of 48 against 45 of 48 is inside the run-to-run noise. The one clear gain is `symlink_check_then_delete`: without Jev, Claude reported a different bug in that function in all 6 runs and never the symlink race. With Jev's concurrency flag it reported the race in 5 of 6.
-- **On Haiku 4.5, Jev now helps, after four changes (matrix 4).** Counting runs graded in both modes, Haiku found 26 of 47 bugs alone and 30 of 47 with Jev. The gain is on the two large diffs: 3 of 6 alone and 6 of 6 with Jev, which flagged 7 of their 31 and 7 of their 25 units. It also found `check_then_act` in 3 of 3 runs against 0 of 3, and `select_cancellation` in 3 of 3 against 1 of 3. Ungraded runs fell from 21 of 120 to 2 of 120. The four changes: a flag is returned as a question to check; verification is shown the definitions a claim names and never answers `dismiss` about code it was not shown; `scope` may be absent or malformed in any way the server can see; and each changed function is its own unit.
-- **Jev still costs Haiku three bugs and adds noise.** With Jev it found `notify_lost_wakeup` in 0 of 3 runs against 3 of 3, and `route_added_after_layer` in 0 of 3 against 1 of 3. Both rest on documented library behaviour that Jev does not know. On `error_flattened_to_string` a `security.unbounded_input` flag drew it to a different claim in all 3 runs. Other entries on buggy fixtures rose from 15 to 34. Many are a flag restated, such as "`expect` on a poisoned mutex can panic", which the skill now tells it not to report and which Jev's verification confirmed as true. Some are real second issues. They are listed for a person to judge.
+- **On Sonnet 5 in matrix 2, Jev met the floor and added little.** 46 of 48 against 45 of 48 is inside the run-to-run noise. The one clear gain is `symlink_check_then_delete`: without Jev, Claude reported a different bug in that function in all 6 runs and never the symlink race. With Jev's concurrency flag it reported the race in 5 of 6.
+- **On Haiku 4.5, Jev first helped after four changes (matrix 4).** Counting runs graded in both modes, Haiku found 26 of 47 bugs alone and 30 of 47 with Jev. The gain is on the two large diffs: 3 of 6 alone and 6 of 6 with Jev, which flagged 7 of their 31 and 7 of their 25 units. It also found `check_then_act` in 3 of 3 runs against 0 of 3, and `select_cancellation` in 3 of 3 against 1 of 3. Ungraded runs fell from 21 of 120 to 2 of 120. The four changes: a flag is returned as a question to check; verification is shown the definitions a claim names and never answers `dismiss` about code it was not shown; `scope` may be absent or malformed in any way the server can see; and each changed function is its own unit.
+- **In matrix 4 Jev still cost Haiku three bugs and added noise.** With Jev it found `notify_lost_wakeup` in 0 of 3 runs against 3 of 3, and `route_added_after_layer` in 0 of 3 against 1 of 3. Both rest on documented library behaviour that Jev does not know. On `error_flattened_to_string` a `security.unbounded_input` flag drew it to a different claim in all 3 runs. Other entries on buggy fixtures rose from 15 to 34. Many are a flag restated, such as "`expect` on a poisoned mutex can panic", which the skill told it not to report and which Jev's verification confirmed as true. Matrix 6 fixed all three.
 - **Before those changes, Jev made the Haiku review worse (matrix 3).** Counting only runs graded in both modes, Haiku found 25 of 34 bugs alone and 20 of 34 with Jev. It also reported more noise: 21 other entries against 5. Of its 17 misses with Jev, in 7 it never raised the seeded bug at all. In 6 it raised it and Jev answered `dismiss`. In the other 4 Jev agreed and the run still did not count; I have not read those four. The extra noise follows the triage flags. In the three runs I checked, Haiku reported "unwrap on a poisoned mutex" where `error_handling.panic` had flagged, and "u32 sum can overflow" where `correctness.overflow` had. A flag says where to look, and the smaller model reports it as a finding. Jev did help Haiku on three fixtures: `check_then_act`, `select_cancellation` and the symlink race.
 - **In matrix 3 Haiku also struggled with the tools themselves.** 21 of its 120 runs could not be graded, against none of 240 on Sonnet. It sent the MCP tools malformed JSON when the scope was empty, or tried to call them through the shell.
-- **The grader is strict.** A bug reported under another dimension does not count. Haiku filed several concurrency bugs under `async`, so its real numbers are somewhat higher in both modes.
+- **The grader is strict.** A bug reported under another dimension does not count. In matrices 3 and 4 Haiku filed several concurrency bugs under `async`, and some under names that do not exist, such as `logic`. The skill now lists the dimension names.
 - **Triage narrows a large diff now.** In matrices 1 to 3 the server merged adjacent changed functions into one unit, so the two large diffs were 3 and 5 units and Jev flagged 63 of 96 units overall. With one unit per changed function they are 31 and 25 units, and in matrix 4 Jev flagged 86 of 261.
-- **Sonnet 5 has not been re-run with the four changes.** Matrix 2 is its latest result.
 
-[`eval/2026-09-20-three-mode.md`](eval/2026-09-20-three-mode.md) has the per-fixture tables, Jev's verdicts on every candidate, the ungraded runs, and **the list of entries that need a person's judgement**. `symlink_check_then_delete` has a second bug I did not plan: a kept `.lock` file makes `remove_dir` fail. Both modes report it.
+[`eval/2026-09-21-three-mode.md`](eval/2026-09-21-three-mode.md) (matrices 5 and 6) and [`eval/2026-09-20-three-mode.md`](eval/2026-09-20-three-mode.md) (matrices 1 to 4) have the per-fixture tables, Jev's verdicts on every candidate, the ungraded runs, and **the list of entries that need a person's judgement**. Two fixtures were corrected before matrices 5 and 6. `symlink_check_then_delete` had a second bug I did not plan, and `explained_expect`, a clean fixture, changed which identifiers match. Both models had reported both.
 
 The corpus is small and synthetic. These numbers say how the pipeline behaves on these cases, not how accurate it is in general.
 
-**Jev's two stages on their own** (ideal claims, no Claude), on the 19 beyond-tooling bugs and 7 clean fixtures:
+**Jev's two stages on their own** (ideal claims, no Claude), on the 19 beyond-tooling bugs and 10 clean fixtures (2026-09-21):
 
 | | |
 |---|---|
-| Triage flagged the buggy fixture in an expected dimension | 14/19 |
-| Clean fixtures with any triage flag | 4/7 |
-| True claims verified as `report` | 16/19 (2 `uncertain`, 1 `dismiss`). It was 12/19 before verification was shown the definitions a claim names |
-| Bait claims verified as `report` | 0/7 |
+| Triage flagged the buggy fixture in an expected dimension | 19/19 (14/19 before the fourth change) |
+| Clean fixtures with any triage flag | 5/10 |
+| True claims verified as `report` | 19/19. It was 12/19 before verification was shown the definitions a claim names, and 16/19 before the library facts |
+| Bait claims verified as `report` | 0/10 |
+| True but trivial bait claims judged `not_material` | 3/3 |
 
-The three unconfirmed true claims are `notify_lost_wakeup`, `route_added_after_layer` and `select_drops_send`. Each rests on documented library behaviour, which no definition in the repository shows. CI replays the recorded answers offline (`recorded_answers_meet_targets`), so a question or threshold change that lowers these numbers fails the build.
+These fixtures are the ones the questions and facts were written against, so read the 19/19 as "nothing known is broken", not as accuracy. CI replays the recorded answers offline (`recorded_answers_meet_targets`), so a question or threshold change that lowers these numbers fails the build.
 
 ```bash
 cargo test --test eval                                        # offline replay of Jev's two stages
@@ -316,11 +328,11 @@ I have not tested the Codex setup. It follows Codex's MCP documentation.
 
 ## Limitations
 
-- Jev sees one excerpt at a time. A finding that depends on another file, or on a library's documented behaviour, often comes back as `uncertain` or `dismiss` and not as `insufficient_context`. The skill treats every verdict as a second opinion for that reason.
-- **A smaller model still over-trusts Jev.** On Haiku 4.5 Jev now helps overall, most on large diffs (see [Eval results](#eval-results)). It still loses bugs that rest on documented library behaviour, and it reports restated flags as findings.
-- Jev does not know library documentation beyond the few facts in `src/facts.rs`. A claim such as "`route_layer` only covers routes added before it" comes back `dismiss`.
-- Question gates are lexical. An unusual spelling of a pattern can skip a question. Two fixtures are ungated because the type that opens the gate is declared in another file.
-- The numbers come from a 30-fixture synthetic corpus and two models.
+- Jev sees one excerpt at a time. A finding that depends on another file can come back as `uncertain` or `dismiss` and not as `insufficient_context`. The skill treats every verdict as a second opinion for that reason.
+- Jev does not know library documentation beyond the 15 facts in `src/facts.rs`, which cover tokio, axum, serde, Dioxus and std. A claim that rests on any other documented behaviour can come back `dismiss`.
+- **A smaller model follows Jev closely.** That is why the wording of the server's output matters as much as its numbers (see [Eval results](#eval-results)).
+- Question gates are lexical. An unusual spelling of a pattern can skip a question.
+- The numbers come from a 33-fixture synthetic corpus and two models, and part of the question set was written against that corpus.
 - A source build cannot finish inside the MCP startup window. Prebuilt binaries are the intended path.
 - CI does not test Windows.
 - The thresholds are starting points, tuned on the first 18 fixtures. They were not changed for the three-mode eval.

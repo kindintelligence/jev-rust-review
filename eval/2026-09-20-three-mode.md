@@ -6,7 +6,7 @@ These are the reports `tests/e2e.rs` wrote, unedited apart from the headings. Th
 - "Runs" counts graded cells. A cell is ungraded when the session never got a result from `evaluate_rust_changes`, or the report had no JSON block. Those cells are listed at the end of each report.
 - Token counts are the CLI's `modelUsage` summed over every turn. Almost all of the input is cache reads, so the sum tracks the number of turns. Use the cost column to compare modes.
 - Mode T ran once per matrix and gives the same result in all four.
-- "Findings for a person to judge" are entries that did not match the seeded bug's lines and dimension. Some are real: `symlink_check_then_delete` has a second, unplanned bug (a kept `.lock` file makes `remove_dir` fail). Some are the seeded bug filed under another dimension, which the grader does not count.
+- "Findings for a person to judge" are entries that did not match the seeded bug's lines and dimension. Some are real: in matrices 1 to 4 `symlink_check_then_delete` had a second, unplanned bug (a kept `.lock` file makes `remove_dir` fail). The fixture was corrected on 2026-09-21. Some are the seeded bug filed under another dimension, which the grader does not count.
 
 
 ## Matrix 1: claude-sonnet-5, Jev verdict used as a gate (2026-09-19, commit cc48377)

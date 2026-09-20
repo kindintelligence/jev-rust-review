@@ -154,7 +154,7 @@ Fact gates read `related_code` as well as the excerpt, because the call whose do
 
 Clippy's defaults already cover a guard held across `.await` (`await_holding_lock`, `await_holding_refcell_ref`), `let _ = lock()` (`let_underscore_lock`), needless `to_owned` and a regex built in a loop. The `lints_exist_in_installed_clippy` test checks every name, level and group in this file and in `questions.rs` against the installed toolchain (Clippy 0.1.97 on 2026-09-19).
 
-**Who runs cargo: the server.** The alternative was Claude running cargo through Bash and handing the output to a filter. JSON output would put a wall of text in Claude's context, which is what this design exists to avoid. Redirecting it to a file needs shell permissions that a headless session does not have. The server running cargo and consuming its JSON is how rust-analyzer's flycheck and reviewdog work, so that is the shape used here. The cost is a second subprocess door. It lives in `cargo_tools.rs`, builds every argument itself, uses no shell and no stdin, and pipes stdout so a tool can never write into the MCP transport. `JEV_RUST_REVIEW_CARGO=0` turns it off, and the skill's `--no-cargo` skips the call.
+**Who runs cargo: the server.** The alternative was Claude running cargo through Bash and handing the output to a filter. JSON output would put a wall of text in Claude's context, which is what this design exists to avoid. Redirecting it to a file needs shell permissions that a headless session does not have. The server running cargo and consuming its JSON is how rust-analyzer's flycheck and reviewdog work, so that is the shape used here. The cost is a second subprocess door. It lives in `cargo_tools.rs`, builds every argument itself, uses no shell and no stdin, and pipes stdout so a tool can never write into the MCP transport. `JEV_RUST_REVIEW_CARGO=0` turns it off, and the skill's `--no-cargo` skips the call. When `JEV_RUST_REVIEW_CARGO_TARGET_DIR` is set, the server sets `CARGO_BUILD_BUILD_DIR` to the same place. A templated `build.build-dir` in the user's cargo config otherwise gives every repository path its own build directory, and the eval's temporary repositories filled a disk that way.
 
 **Filtering is code.** The server computes the changed line ranges of each file from the diff it already parses. A diagnostic touches the change when **any** of its spans overlaps a changed range: the primary span, a secondary label, or the span of a note. The first eval run showed why: `await_holding_lock` puts the unchanged guard binding in its primary span and the newly added `.await` in a note. A span inside a macro from another crate is walked out to its call site. The rules:
 
@@ -214,7 +214,7 @@ A pattern using `\s*` can reach across a line break into the next marker. `ARITH
 
 `questions::TOOL_OWNED` lists the lints of the deleted questions with their dimension, so that a finding about a guard across `.await` is still recognised as a repeat of `await_holding_lock`.
 
-Core questions (41):
+Core questions (42):
 
 | Dimension | Questions |
 |---|---|
@@ -223,7 +223,7 @@ Core questions (41):
 | type_design | `loose_types` |
 | error_handling | `swallowed`, `panic`, `lossy`, `drop_panic` |
 | async | `blocking_call`, `select_cancellation`, `detached_task`, `unbounded`, `sequential_awaits` |
-| concurrency | `check_then_act`, `lost_wakeup`, `atomics`, `unsafe_send_sync`, `lock_scope` |
+| concurrency | `check_then_act`, `lost_wakeup`, `atomics`, `unsafe_send_sync`, `lock_scope`, `lock_order` |
 | unsafe | `memory_access`, `aliasing`, `transmute` |
 | ffi | `ownership`, `pointers_and_strings`, `unwind` |
 | performance | `repeated_work` |
@@ -447,6 +447,8 @@ Left open by that run: `notify_lost_wakeup` (0 of 3 with Jev, 3 of 3 without) an
 | The same two bugs, in Jev's own stages | Verification answered `dismiss` and `uncertain` on true claims about `notify_waiters`, `route_layer` and `Sender::send` | Six facts from the tokio, axum and std documentation (§1, §4). Fact gates read `related_code`. Two questions for defect classes that had none: `concurrency.lost_wakeup` and `axum.route_after_layer` |
 | Noise: true but trivial entries | Verification confirmed "unwrap on a poisoned mutex can panic" because it is true | A `remote_risk` category and a `not_material` verdict (§6). `error_handling.panic`, `correctness.overflow` and `security.unbounded_input` say what does not count. Three clean fixtures carry true but trivial bait claims |
 | A flag pulls the model to another claim | On `error_flattened_to_string` only `security.unbounded_input` flagged. `error_handling.lossy` answered 0.18 on the textbook case, because its wording let "the text survives" count as kept | `lossy` now says that formatting an error into a `String` loses its type, kind and source. The skill says a flag is one question about a unit, not a description of it |
+| `lock_order_inversion` lost with Jev (0 of 3 against 3 of 3, first pass of this re-run) | No question asked about lock order, and no concurrency gate opened, because `Mutex` is declared in another file. The `correctness` and `error_handling` flags on the unit drew Haiku away | `concurrency.lock_order` asks whether a lock is taken while another is held. Jev cannot compare orders across units, so the flag sends the reviewer to the other lock sites. `.lock()` opens the gate alone |
+| Two fixtures were not what they claimed | `explained_expect` (clean) changed which identifiers match, and both models said so. `symlink_check_then_delete` carried a second bug, a kept `.lock` file that makes `remove_dir` fail | Both fixed: one defect, or none, per fixture. With the `.lock` skip gone, nothing opened `check_then_act` on the symlink race, so its gate now opens on filesystem checks (`metadata(`, `is_file()`, `is_dir()`, `is_symlink()`) |
 | Haiku invents dimension names (`logic`, `access_control`), which the grader cannot count | Seen in the list for a person to judge | The skill lists the 16 names, and a test keeps the list equal to `Dimension::ALL` |
 
 **This is tuning on known fixtures, and it is recorded as such.** The facts and the two questions were written from the library documentation, and they cover more than the fixtures need (`JoinHandle`, `BufWriter`, `size_hint`). They were still written after seeing which fixtures failed. So the gain on `notify_lost_wakeup`, `route_added_after_layer` and `select_drops_send` shows that the mechanism works. It does not show how often Jev will know the library behaviour behind a bug it has not seen. The review-every-unit change and `not_material` do not depend on any fixture.
@@ -455,14 +457,39 @@ Measured on Jev's two stages alone, before any Claude run, on 19 bugs and 10 cle
 
 | | Before | After |
 |---|---|---|
-| Triage flagged the bug in an expected dimension | 14/19 | 18/19 |
+| Triage flagged the bug in an expected dimension | 14/19 | 19/19 |
 | True claims verified as `report` | 16/19 | 19/19 |
 | Bait claims verified as `report` | 0/7 | 0/10 |
 | True but trivial bait claims judged `not_material` | no such verdict | 3/3 |
 
 The rules for judging the re-runs are rules 1 to 6 above, unchanged. Both models are run again in modes C and J, because the skill changes reach both modes.
 
-FOURTH_RESULT_PLACEHOLDER
+**Fourth result (2026-09-21, three runs per cell, all 240 runs graded).** `eval/2026-09-21-three-mode.md` has the raw reports.
+
+| Model | | Without Jev | With Jev |
+|---|---|---|---|
+| `claude-sonnet-5` | Beyond-tooling bugs found | 45/48 | 47/48 |
+| | Entries on clean fixtures | 0 in 12 runs | 0 in 12 runs |
+| | Other entries on buggy fixtures | 1 | 1 |
+| `claude-haiku-4-5` | Beyond-tooling bugs found | 36/48 | 43/48 |
+| | Entries on clean fixtures | 1 in 12 runs | 1 in 12 runs |
+| | Other entries on buggy fixtures | 5 | 4 |
+
+By the rules:
+
+- **Sonnet 5** meets the floor (rule 1). It adds 2 bugs of 48, below the margin of 3, so rule 3 applies: Jev stays on, and no gain beyond noise was measured. Both bugs are `symlink_check_then_delete`, 0 of 3 without Jev and 2 of 3 with it, as in matrices 1 and 2.
+- **Haiku 4.5** meets the floor and adds 7 bugs of 48 (rule 2). With Jev no fixture is below its result without Jev except `bufwriter_never_flushed`, 0 of 3 against 1 of 3. In one of those three runs Haiku raised the bug, Jev answered `report`, and Haiku still wrote "no material issues".
+
+What each change did:
+
+- **Review every unit.** The three fixtures with no flag in matrix 4 went from 0 of 9 with Jev to 6 of 9. The skill change reaches mode C too, and Haiku without Jev rose from 26 of 47 to 36 of 48. The listed dimension names are part of that: no entry in either matrix was filed under an invented name that the grader could not count, except one `safety`.
+- **`not_material`.** Haiku's other entries with Jev fell from 34 to 4. Verification answered `not_material` on 20 candidates away from the seeded bug's lines and on 5 that overlap them. In all 5 runs the candidate was a second, trivial claim on the same lines, such as a poisoned lock, and the seeded bug's own claim came back `report`. No seeded bug was called `not_material` on either model.
+- **Facts and the new questions.** Triage flagged the seeded bug's lines in 48 of 48 runs on both models, from 39 of 48 on Haiku. On the seeded bug, Jev answered `dismiss` twice on Haiku and never on Sonnet, from 11 times in matrix 4.
+- **`concurrency.lock_order`** was added after the first pass of this re-run, in which Haiku found `lock_order_inversion` in 0 of 3 runs with Jev against 3 of 3 without. After it, 3 of 3. The 24 cells per model that the question or the two corrected fixtures touch were run again; the raw report says which.
+
+Cost per review: Haiku $0.081 without Jev and $0.090 with it, 54 s both ways. Sonnet $0.118 and $0.135, 30 s and 29 s. Jev's share is $0.0002.
+
+Still open after this run: nothing from the list above. One thing the run showed and did not settle: `bufwriter_never_flushed` on Haiku, where the model dropped a finding Jev had confirmed.
 
 ## 11. Progress checklist
 
@@ -486,4 +513,5 @@ FOURTH_RESULT_PLACEHOLDER
 - [x] Headless Claude Code session check (2026-09-19, on the kiln repo: server connected, both tools listed, full skill run)
 - [x] Secret scan of history; repo made public (2026-09-19)
 - [x] CI green on GitHub (run 35415756948)
+- [x] Fourth change and re-run on both models (2026-09-21): Haiku 43/48 with Jev against 36/48, Sonnet 47/48 against 45/48 (§10, fourth result)
 - [ ] First tagged release (prebuilt binaries)
