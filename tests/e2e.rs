@@ -16,9 +16,11 @@
 //! E2E_MODES=T,C,J E2E_RUNS=1 cargo test --test e2e -- --ignored --nocapture
 //! ```
 //!
-//! Cells are written to `eval-results/e2e/cells/` as they finish and are
+//! Cells are written to `eval-results/e2e/<tag>/cells/` as they finish and are
 //! never re-run, so a crash or a raised `E2E_RUNS` only pays for what is
-//! missing. `E2E_FIXTURES=a,b` narrows the corpus, `E2E_JOBS` sets how many
+//! missing. `E2E_TAG` names the matrix (results go to
+//! `eval-results/e2e/<tag>/`). `E2E_FIXTURES=a,b` narrows the corpus, `E2E_HEADLESS_FIXTURES`
+//! narrows modes C and J only, `E2E_JOBS` sets how many
 //! headless sessions run at once, and `E2E_MODEL` picks the Claude model.
 #![allow(
     clippy::unwrap_used,
@@ -107,8 +109,14 @@ fn env(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.trim().is_empty())
 }
 
-fn out_dir() -> PathBuf {
+fn e2e_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("eval-results/e2e")
+}
+
+/// Results of one matrix. `E2E_TAG` names it, for example the model and the
+/// skill revision, so several matrices can sit side by side.
+fn out_dir() -> PathBuf {
+    e2e_dir().join(env("E2E_TAG").unwrap_or_else(|| "default".into()))
 }
 
 fn norm_dimension(d: &str) -> String {
@@ -609,10 +617,13 @@ async fn three_mode_eval() {
             .filter(|f| only.as_ref().is_none_or(|o| o.contains(&f.name)))
             .collect(),
     );
-    for d in ["cells", "transcripts", "target"] {
+    for d in ["cells", "transcripts"] {
         std::fs::create_dir_all(out_dir().join(d)).unwrap();
     }
-    let target_dir = out_dir().join("target");
+    // One cargo target directory for every matrix: the fixture crates'
+    // dependencies are built once.
+    let target_dir = e2e_dir().join("target");
+    std::fs::create_dir_all(&target_dir).unwrap();
     let save = |c: &Cell| {
         std::fs::write(
             cell_path(&c.mode, &c.fixture, c.run),
@@ -653,6 +664,10 @@ async fn three_mode_eval() {
     };
 
     // A bug the tools catch cannot count for C or J, so it is not run there.
+    // Mode T covers the whole corpus; the headless matrix may be narrower,
+    // to stay inside the run budget (DESIGN.md §9).
+    let headless: Option<Vec<String>> =
+        env("E2E_HEADLESS_FIXTURES").map(|v| v.split(',').map(|s| s.trim().to_string()).collect());
     let pending: Vec<(&str, usize, usize)> = ["C", "J"]
         .into_iter()
         .filter(|m| modes.contains(m))
@@ -660,7 +675,9 @@ async fn three_mode_eval() {
         .flat_map(|(m, run)| (0..fixtures.len()).map(move |i| (m, run, i)))
         .filter(|&(m, run, i)| {
             let name = &fixtures[i].name;
-            !cell_path(m, name, run).exists() && beyond_or_clean.contains(name)
+            !cell_path(m, name, run).exists()
+                && beyond_or_clean.contains(name)
+                && headless.as_ref().is_none_or(|h| h.contains(name))
         })
         .collect();
     eprintln!("{} headless runs to do", pending.len());

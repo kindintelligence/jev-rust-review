@@ -288,7 +288,9 @@ The verdict is the first rule that matches:
 2. `report` if `P(supported)` reaches the report bar and the category is `real_defect`. A `debatable_tradeoff` also counts if `P(real_defect)` is at least `TRADEOFF_REAL_DEFECT_BAR` (0.40).
 3. `insufficient_context` if `support` chose `insufficient_context`. **This is not a refutation.** Cross-file findings, such as lock ordering or semver breaks, land here. The skill keeps them when Claude's own confidence is High. It says Jev could not verify them from local context.
 4. `dismiss` if `P(supported)` is below 0.40.
-5. `uncertain` otherwise. The skill reports these only with deterministic evidence.
+5. `uncertain` otherwise.
+
+**A verdict is a second opinion, not a gate.** Only `tool_reported` removes a finding, because that check is code. Until 2026-09-20 the skill dropped a finding on `dismiss`, and on `uncertain` without deterministic evidence. The first three-mode run (§10) showed the cost: in 14 of the 15 runs where the full pipeline missed the seeded bug, Claude had found it and Jev had not confirmed it. Each of those bugs depends on something outside the excerpt Jev reads: another file, or the documented behaviour of a library. The skill now treats `uncertain` and `dismiss` as a reason to re-read the code for what Jev may have seen. The agent drops the finding if it finds that, and keeps it, with Jev's number shown, if it can still state the concrete failure with High confidence.
 
 Both named bars live in `src/questions.rs` with the other thresholds. Environment variables override the report and dismiss bars (see the README). The bars are starting points tuned against the eval corpus. Retune them only with eval evidence.
 
@@ -348,19 +350,38 @@ It collects each binary from `target/<triple>/dist/`.
 
 **The corpus** (2026-09-19): 23 buggy and 7 clean fixtures. Tools catch 4 of the 23 (`guard_across_await`, `truncating_cast`, `lossy_error`, `semver_break`). Ten fixtures are new and harder: they span functions or files, and seven are modelled on real bugs or documented behaviour, with the source cited in `fixture.toml` (RUSTSEC-2021-0003, CVE-2018-1000810, CVE-2022-21658, and documented tokio, axum and std behaviour). All are fresh minimal reproductions. Two are noisy tidy-up diffs of 25 and 30 changed functions with one seeded bug each. Before any C or J run, five older fixtures were edited so that each carries exactly one defect and no incidental tool warning; `swallowed_result` lost its `let _ =`, which Clippy reports, and keeps the `.ok()`, which it does not.
 
-**The matrix.** Three runs per cell for C and J on 20 fixtures is 120 headless runs, the budget. The 20 are the 12 new fixtures, 4 older bugs (`select_cancellation`, `check_then_act`, `unsound_unsafe`, `prompt_injection`) and 4 clean fixtures (`arc_clone`, `scoped_lock_before_await`, `sound_unsafe`, `explained_expect`). The model is `claude-sonnet-5` for both modes. Harness shakedown runs are kept as run 1 when nothing changed afterwards.
+**The matrix.** Three runs per cell for C and J on 20 fixtures is 120 headless runs, the budget for one matrix. The first matrix used it. The owner then asked for a re-run after the change in §10, and for a smaller model, which is two more matrices. The 20 are the 12 new fixtures, 4 older bugs (`select_cancellation`, `check_then_act`, `unsound_unsafe`, `prompt_injection`) and 4 clean fixtures (`arc_clone`, `scoped_lock_before_await`, `sound_unsafe`, `explained_expect`). The model is `claude-sonnet-5` for both modes. Harness shakedown runs are kept as run 1 when nothing changed afterwards.
 
-## 10. Decision rules
+## 10. How Jev is judged
 
-Written on 2026-09-19, before the first C or J run, and then followed.
+**Jev is a tool the coding agent uses. It is not an alternative to the agent.** It sits between the model and the software: typed, fast, and close to free. The 60 full-pipeline runs of the first matrix used $0.0075 of Jev against $8.19 of Claude. At that price the question is never "Jev or Claude". It is how an agent should use a cheap second reader, and whether a review with it is better than the same review without it. That matters most for a model that is smaller or less thorough than the one this was built with, so the eval runs on two models.
 
-Let **B** be the beyond-tooling bugs found, summed over the three runs (out of 48), and **FP** the entries reported on clean fixtures, summed over the three runs (12 runs). Claude is not deterministic, so a gap of fewer than 3 on B or fewer than 2 on FP is a tie.
+**First rules, first result (2026-09-19).** The first version of this section set Jev against Claude: Jev triage would stop being the default unless mode J beat mode C on bugs found or false positives, and verification would be cut if it removed more seeded bugs than other candidates. Those rules were committed before any Claude run (`cc48377`). The run, on `claude-sonnet-5`, three runs per cell:
 
-1. **Triage as the default.** Jev triage stays the default only if J beats C on B or on FP and is not worse on the other, by those margins. Otherwise triage stops being the default.
-2. **Triage above a unit count.** If triage loses rule 1, it is kept for large diffs only if the two noisy fixtures show it helping: J finds at least 2 more of their 6 runs than C, or finds as many with at least 25% fewer Claude tokens. The README then says triage is for diffs above 20 units. If not, triage is cut.
-3. **Verification, judged apart.** From mode J's own tool calls, count the candidates verification removed (`dismiss`, or `uncertain` with no independent evidence). Verification stays if it removed at least 3 candidates that were not the seeded bug, and at least twice as many of those as seeded bugs it removed. It stays on that evidence even if triage goes. If it removed more seeded bugs than other candidates, it is cut.
-4. **Publish.** The three-mode table goes in the README whichever way it comes out, with the date, model versions, run counts and cost.
-5. **No tuning.** Thresholds, prompts and fixtures are not changed to make J win. If any of them changes after results are seen, the README says what and why, and all three modes are run again.
+| Mode | Beyond-tooling bugs found | Entries on clean fixtures | Claude cost | Jev cost |
+|---|---|---|---|---|
+| C, Claude only | 45/48 | 0 in 12 runs | $6.97 | none |
+| J, full pipeline, verification as a gate | 33/48 | 1 in 12 runs | $8.19 | $0.0075 |
+
+By those rules both stages lost. The project owner rejected the framing, not the numbers: a contest between two modes is the wrong test of a tool that is meant to work with the agent. The numbers still say two useful things, and both are about how the agent used Jev:
+
+- **Verification as a gate overruled correct findings.** Of J's 15 misses, 14 had Claude's candidate on the seeded bug come back `uncertain` or `dismiss`, and the skill told Claude to drop it. The fifteenth was reported under another dimension, which the grader does not count.
+- **Triage as a pointer found a bug Claude alone missed.** On `symlink_check_then_delete`, C reported a different defect in the same function in all three runs and never the symlink race. J, with a concurrency flag on the unit, reported the race in all three.
+
+This corpus cannot show a saving in Claude tokens from triage. Every fixture is one or two units, except the noisy diffs at 3 and 5, because the unit builder merges adjacent changed functions. There was nothing for triage to skip.
+
+**What changed, and why (2026-09-20).** One thing: the skill, the agent prompt and the tool descriptions now treat a Jev verdict as a second opinion (§6). No threshold, question or fixture changed. This is a change made after seeing results, so every Claude mode is run again, and the first result stays published beside the new one.
+
+**Rules for the second run,** written before it:
+
+1. **Floor.** With Jev, the review must not find fewer beyond-tooling bugs than without it, and must not report more entries on clean fixtures. The noise margins are the same as before: 3 on bugs found (of 48), 2 on entries.
+2. **Added value.** Jev earns its default place if, above that floor, it finds seeded bugs the same model misses without it: at least 3 more of 48, on either model. A gain on the smaller model counts as much as one on the larger.
+3. **If it only meets the floor,** Jev stays on by default, because it costs about a hundredth of a cent per review, and the README says plainly that no gain was measured.
+4. **If it fails the floor on either model,** the README says so, and the next step is to find which stage caused it from the per-run verdicts, as was done here.
+5. **Cost and wall time** are reported per mode and per model. They are reported, not judged: Jev's share is below 0.1% of a review's cost.
+6. **Publish** every matrix, including the first one, with date, models, run counts and cost.
+
+Models: `claude-sonnet-5` and `claude-haiku-4-5-20251001`. Same 20 fixtures, three runs per cell, modes C and J. Mode T does not depend on the model.
 
 ## 11. Progress checklist
 

@@ -46,7 +46,7 @@ Rules for `claim`:
 - One defect, one sentence.
 - Name identifiers (functions, variables, types), not line numbers.
 - Keep what the claim depends on inside `start_line..=end_line`. Another model checks the claim against exactly those lines and their enclosing item. If any part is unsupported, the whole claim fails.
-- A defect may genuinely depend on code elsewhere (lock ordering across functions, callers of a changed `pub` item). Still return it, and say so in `evidence`. The checker will answer that it lacks context. That is not a refutation. The finding survives on your High confidence.
+- A defect may genuinely depend on code elsewhere (lock ordering across functions, callers of a changed `pub` item). Still return it, and say so in `evidence`. The checker will answer that it lacks context, or will not confirm the claim. That is a second opinion, not a refutation. The finding survives on your High confidence and a concrete failure.
 
 Rules for everything else:
 

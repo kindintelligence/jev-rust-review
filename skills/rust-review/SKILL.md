@@ -14,7 +14,7 @@ A Rust developer already gets excellent feedback from rustc, Clippy and cargo. R
 The review uses three layers. Each does the job it is good at:
 
 - **Tools** (rustc, Clippy, cargo-semver-checks) give deterministic facts. The `cargo_diagnostics` tool runs them and filters the output to the change in code. You never read raw compiler output.
-- **Jev** (the `jev` MCP server) gives typed, cheap judgements on questions no tool answers. It triages where to look, then checks your candidate findings against the code. It never writes prose. Its numbers are routing signals, not truth.
+- **Jev** (the `jev` MCP server) gives typed, fast, nearly free judgements on questions no tool answers. It triages where to look, then gives a second opinion on your candidate findings. It never writes prose. It sees one excerpt at a time, so it is a colleague's quick read, not a ruling. Its numbers are signals, not truth.
 - **You** do the reasoning. Read the real code, find root causes and propose fixes. Decide what is worth the user's time.
 
 Prefer precision over coverage. "No material issues found" is a good outcome. Say it plainly, along with what you checked.
@@ -90,10 +90,14 @@ A candidate finding needs:
 Call `verify_rust_findings` with all candidates (at most 20) and the same `scope`. Do this even when Jev is unavailable. The server re-reads the code itself. For each result:
 
 - `verdict: tool_reported`: a tool already reported this defect on these lines, and `tool` names it. Drop the finding. The tool's entry stands, and you may add your failure scenario to it.
-- `verdict: report`: keep it.
+- `verdict: report`: Jev agrees. Keep it.
 - `verdict: insufficient_context`: Jev could not judge the claim from the local code (its `support` answer was `insufficient_context`). This is **not a refutation**. If your own confidence is High, keep the finding. Say in the report that Jev could not verify it from local context. If your confidence is Medium, move it to "considered and dismissed".
-- `verdict: uncertain`: keep it **only** if deterministic evidence proves it independently. Examples are a failing test or a reproduction you ran. Otherwise move it to "considered and dismissed".
-- `verdict: dismiss`: Jev chose `refuted`, the claim is a style preference, or `supported` is below the dismiss bar. Drop it. At most, list it under "considered and dismissed".
+- `verdict: uncertain` or `verdict: dismiss`: Jev did not confirm the claim. **This is a second opinion, not a ruling.** Jev reads only the excerpt around the claimed lines. It cannot see the other file, the documented behaviour of a library, or the caller. Do this:
+  1. Re-read the claimed lines and the code the claim depends on. Look for what Jev may have seen: a guard you missed, a check earlier in the function, a type that makes the failure impossible.
+  2. If you find it, the claim was wrong. Move it to "considered and dismissed".
+  3. If you can still state the concrete failure step by step, and your confidence is High, **keep the finding**. Show Jev's number and say in one line why you kept it, for example "depends on `forward` in src/sink.rs, which Jev's excerpt does not include".
+  4. If your confidence is only Medium, move it to "considered and dismissed".
+  5. If `category` is `style_preference`, drop it unless project policy asks for it.
 - `verdict: not_verified` with the tool's `status: jev_unavailable`: Jev did not see it. Keep it only on High confidence.
 - `status: invalid` or `error`: fix the input (line range, file, severity) and retry once. Otherwise treat the finding as unverified and apply the same rule as `uncertain`.
 
@@ -128,6 +132,13 @@ A kept `insufficient_context` finding uses this Jev line instead:
 ```text
 Jev: could not verify from local context (insufficient_context 0.74); kept on
 Claude's High confidence
+```
+
+A finding kept after `uncertain` or `dismiss` uses this one:
+
+```text
+Jev: did not confirm (supported 0.42, verdict uncertain); kept because the
+failure depends on `forward` in src/sink.rs, outside Jev's excerpt
 ```
 
 After the findings, list the tool facts under "From the tools", one line each:

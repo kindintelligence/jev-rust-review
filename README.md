@@ -1,36 +1,50 @@
 # jev-rust-review
 
-A Claude Code plugin for Rust code review. [TypeSafe](https://typesafe.ai)'s Jev model triages the diff and checks each candidate finding. Claude reads the code, finds the root cause and proposes the fix.
+A Claude Code plugin for Rust code review that goes deeper than the compiler. rustc, Clippy and cargo-semver-checks report what tools can find, filtered to the lines you changed. [TypeSafe](https://typesafe.ai)'s Jev model and Claude spend their effort on what no tool reports: a `select!` branch that loses data when it is cancelled, a check and an act under two separate locks, a length guard removed from a caller in another file.
 
 > **In active development.** This is v0.1. Interfaces, question ids, thresholds and output formats may change between versions. Prebuilt binaries are not published yet, so the first launch builds from source (see [Install](#install)).
 >
 > This is an independent project. TypeSafe and Anthropic do not endorse it and are not affiliated with it.
 
 ```text
-rustc / cargo / clippy  = deterministic facts        (Claude runs them)
-Jev                     = typed semantic judgment     (this MCP server: triage + verification)
-Claude                  = reasoning, root cause, fix  (the rust-review skill + rust-reviewer agent)
+rustc / clippy / cargo-semver-checks = deterministic facts    (this MCP server runs them, filtered to the change)
+Jev                                  = typed semantic judgment (this MCP server: triage + verification)
+Claude                               = reasoning, root cause, fix (the rust-review skill + rust-reviewer agent)
 ```
 
 ```text
-git diff ──> Rust context collector ──> Jev triage (one fan-out request per unit)
+git diff ──> cargo_diagnostics: clippy + semver-checks, changed lines only ──> tool facts, reported once
+    │
+    └──────> Rust context collector ──> Jev triage (one fan-out request per unit)
                                               │
-                                   flagged (unit, dimension) pairs
+                          flagged (unit, dimension) pairs, minus what a tool reported
                                               v
-                         Claude inspects the real code (+ cargo, clippy, tests)
+                              Claude inspects the real code (+ tests)
                                               │
                                      candidate findings
                                               v
-                      Jev verification: supported / refuted / insufficient_context
+              verification: tool_reported / supported / refuted / insufficient_context
                                               v
                           short, high-precision, actionable review
 ```
+
+## Tools first
+
+A Rust developer already gets excellent feedback from rustc, Clippy and cargo. A review that repeats it is noise. So the server runs the tools itself and treats their output as fact:
+
+- **One Clippy run, filtered in code.** `cargo clippy --message-format=json` gives every compiler diagnostic, Clippy's defaults, and ten off-by-default lints. They cover lossy casts, needless ownership, redundant clones, ignored must-use values, discarded errors, non-`Send` fields, wildcard enum arms and undocumented `unsafe`. The server keeps errors anywhere and warnings on changed lines. Claude never reads raw compiler output.
+- **Your lint policy wins.** If the project allows a lint, with `#[allow]` or in `[lints.clippy]`, the review stays quiet about it.
+- **cargo-semver-checks answers API questions.** It runs when a library's `pub` surface changed and it is installed. The plugin never installs anything. When it is absent, the report says so in one line.
+- **Miri is suggested, never run,** when `unsafe` code changed.
+- **Nothing is reported twice.** A defect a tool reported on the same lines never comes back as a Jev flag or a Claude finding. The check is code, and it also runs without a TypeSafe key.
+
+Every Jev question carries a sentence that says why no compiler check, lint or cargo tool answers it. A test fails if one is empty.
 
 ## Why Jev
 
 Jev answers typed questions about a piece of state: yes/no probabilities, choices and ordered scores. It never writes prose. One request can carry many questions, and input costs $0.042 per million tokens. That suits two narrow jobs.
 
-- **Triage finds where to look.** Each changed unit gets up to 44 core questions plus framework questions. Each question targets one defect. Examples: "is a `std::sync` guard alive at an `.await`?" and "does this `as` cast truncate?". Lexical gates decide which questions apply. The bar to flag is low, because a missed bug costs more than a wasted look.
+- **Triage finds where to look.** Each changed unit gets up to 40 core questions plus framework questions. Each question targets one defect that no tool reports. Examples: "can a `select!` branch that loses the race lose data?" and "is this check separated from the action it guards?". Where a tool finds the pattern, the question keeps only the judgement: Clippy finds the lossy cast, and Jev is asked whether the value can be out of range. Lexical gates decide which questions apply. The bar to flag is low, because a missed bug costs more than a wasted look.
 - **Verification decides what you see.** Before a finding reaches you, Jev re-reads the code and answers three questions:
   - does the code contain the claimed defect (`supported`, `refuted` or `insufficient_context`);
   - how severe is it, on an ordered score;
@@ -45,7 +59,8 @@ The question design works around Jev's documented weak spots. These include lite
 - Claude Code 2.1 or later on Linux or macOS. Windows works through Git Bash, but CI does not test it.
 - A TypeSafe API key from [console.typesafe.ai](https://console.typesafe.ai/). Without a key, the review still runs as a Claude-only review under a banner.
 - `git`. The prebuilt download also needs `curl` or `wget`, and `sha256sum` or `shasum`.
-- `cargo`, until prebuilt binaries are published.
+- `cargo` with Clippy. Without Clippy the tool facts come from `cargo check` alone.
+- Optional: [`cargo-semver-checks`](https://github.com/obi1kenobi/cargo-semver-checks), for library API changes.
 
 ## Install
 
@@ -76,7 +91,7 @@ cargo install --locked --git https://github.com/kindintelligence/jev-rust-review
 
 The launcher finds the binary on `PATH`. You can also point `JEV_RUST_REVIEW_BIN` at a binary.
 
-**Check the connection.** Run `/mcp` in Claude Code. `plugin:jev-rust-review:jev` should show as connected with two tools. From a script:
+**Check the connection.** Run `/mcp` in Claude Code. `plugin:jev-rust-review:jev` should show as connected with three tools. From a script:
 
 ```bash
 claude -p "list your MCP tools" --output-format stream-json --verbose | head -1   # init event lists mcp_servers
@@ -98,7 +113,8 @@ claude --plugin-dir "$(pwd)"
 /jev-rust-review:rust-review rev:abc1234      # what one commit introduced
 /jev-rust-review:rust-review src/cache.rs     # changes under a path, or the whole file if unchanged
 /jev-rust-review:rust-review --dry-run        # show exactly what would be sent; send nothing
-/jev-rust-review:rust-review --no-cargo       # skip cargo check/clippy/test (they run build scripts)
+/jev-rust-review:rust-review --no-cargo       # skip clippy, semver-checks and tests (cargo runs build scripts)
+/jev-rust-review:rust-review --json           # end the report with a machine-readable list of what it reported
 ```
 
 `/rust-review` also works when no other skill has that name.
@@ -122,10 +138,11 @@ Every number in a report comes from Jev and says so. Claude states its own confi
 
 | Tool | Input | Output |
 |---|---|---|
-| `evaluate_rust_changes` | `repo_path?`, `scope?`, `dry_run?`, `profiles?`, `max_units?` | Status and reason. Units, with line ranges computed from the diff. Every Jev answer with its probabilities, confidence, threshold and `flagged`. The strongest flags, listed first. Project facts: edition, MSRV, runtime, profiles, crate kind, and whether the diff touches tests. Cargo facts, skipped files, redaction counts, token usage and cost. In a dry run, the exact request bodies. |
-| `verify_rust_findings` | `findings[1..=20]` (`dimension`, `file`, `start_line`, `end_line`, `claim`, `severity`), `repo_path?`, `scope?`, `dry_run?` | For each finding: the `support` choice and `P(supported)`, a severity score (level name, `p_high_or_above`, confidence), a category choice, and a `verdict` (`report`, `insufficient_context`, `uncertain` or `dismiss`). |
+| `cargo_diagnostics` | `repo_path?`, `scope?` | Compiler errors anywhere and warnings on changed lines, each with file, lines, lint code and message. The extra lints that ran. Counts of warnings outside the change and of diagnostics the project's lint policy silenced. The cargo-semver-checks verdict when a library's `pub` surface changed. A Miri suggestion when `unsafe` changed. |
+| `evaluate_rust_changes` | `repo_path?`, `scope?`, `dry_run?`, `profiles?`, `max_units?` | Status and reason. Units, with line ranges computed from the diff. Every Jev answer with its probabilities, confidence, threshold and `flagged`. The strongest flags, listed first, and `tool_covered`: flags dropped because a tool already reported the defect. Project facts: edition, MSRV, runtime, profiles, crate kind, and whether the diff touches tests. Cargo facts, skipped files, redaction counts, token usage and cost. In a dry run, the exact request bodies. |
+| `verify_rust_findings` | `findings[1..=20]` (`dimension`, `file`, `start_line`, `end_line`, `claim`, `severity`), `repo_path?`, `scope?`, `dry_run?` | For each finding: the `support` choice and `P(supported)`, a severity score (level name, `p_high_or_above`, confidence), a category choice, and a `verdict` (`report`, `insufficient_context`, `uncertain`, `dismiss`, or `tool_reported` when a tool already reported the defect on those lines). |
 
-The server reads the repository itself. It takes a path and a scope, not a pasted diff. It validates scopes, and runs git with an argument vector and `--` separators.
+The server reads the repository itself. It takes a path and a scope, not a pasted diff. It validates scopes, and runs git and cargo with argument vectors, never a shell. The skill calls the tools in the order of the table.
 
 ## Review dimensions
 
@@ -151,7 +168,13 @@ The reviewer deliberately does **not** flag:
 - a sound `unsafe` with a correct `SAFETY` comment;
 - style points, unless project policy asks for them.
 
-Clippy handles undocumented `unsafe` (`undocumented_unsafe_blocks` and `missing_safety_doc`). The skill runs it.
+It also leaves these to the tools, which report them on changed lines:
+
+- a guard held across `.await` (`await_holding_lock`, on by default);
+- lossy `as` casts, `let _ =` on a `Result`, `.map_err(|_| ..)`, wildcard enum arms;
+- an owned argument that is only read, and a clone whose original is never used again;
+- undocumented `unsafe` (`undocumented_unsafe_blocks` and `missing_safety_doc`);
+- a removed or changed `pub` item, when cargo-semver-checks is installed.
 
 ## Framework detection
 
@@ -161,7 +184,7 @@ A profile activates only when the crate depends on its framework. Each profile i
 |---|---|---|
 | Tokio | tokio 1.x docs | runtime nesting, `spawn_blocking`, shutdown, `select!` cancel safety, `blocking_*` in async, sync vs async mutex |
 | Axum | axum 0.8 docs | error exposure, middleware order, `Extension` vs `State`, blocking handlers |
-| Dioxus | Dioxus 0.7 docs (0.7.10) | signal guards across `.await`, read/write overlap, effect loops, hook rules, stale captures, server-function trust, `use_server_future` tracking |
+| Dioxus | Dioxus 0.7 docs (0.7.10) | signal guards across `.await` (Clippy does not know these guards), read/write overlap, effect loops, hook rules, stale captures, server-function trust, `use_server_future` tracking |
 
 The server detects the async runtime from `Cargo.toml`. It never assumes Tokio.
 
@@ -184,7 +207,10 @@ Every setting is an environment variable.
 | `JEV_RUST_REVIEW_TIMEOUT_SECS` | 30 | Per request. |
 | `JEV_RUST_REVIEW_MAX_RETRIES` | 3 | Applies to 408, 429 and 5xx responses, timeouts, and connection errors. `Retry-After` is honoured. |
 | `JEV_RUST_REVIEW_PROFILES` | `auto` | `auto`, `none`, or a list such as `tokio,axum`. |
-| `JEV_RUST_REVIEW_CARGO` | `1` | `0` stops the skill from running cargo. |
+| `JEV_RUST_REVIEW_CARGO` | `1` | `0` stops the server and the skill from running cargo. |
+| `JEV_RUST_REVIEW_SEMVER_CHECKS` | `1` | `0` skips cargo-semver-checks even when it is installed. |
+| `JEV_RUST_REVIEW_CARGO_TIMEOUT_SECS` | 600 | Upper bound on one cargo run. |
+| `JEV_RUST_REVIEW_CARGO_TARGET_DIR` | none | A target directory for the server's own cargo runs, so they never wait on your build's lock. It costs one extra full build. |
 | `JEV_RUST_REVIEW_DRY_RUN` | `0` | `1` makes every call a dry run. |
 | `JEV_RUST_REVIEW_LOG` | `warn` | Log filter. Logs go to stderr only. |
 | `JEV_RUST_REVIEW_BIN` | none | Launcher: use this binary. |
@@ -194,6 +220,7 @@ Every setting is an environment variable.
 ## Privacy and data flow
 
 - **Your code goes to TypeSafe.** The server sends the changed code and its enclosing items to `https://api.typesafe.ai/v1/systemone`. Requests go straight from your machine, with no proxy and no telemetry. TypeSafe states it does not train on requests. See its [privacy policy](https://typesafe.ai/legal/privacy-policy) and [data processing agreement](https://typesafe.ai/legal/data-processing).
+- **cargo runs on your machine.** `cargo_diagnostics` runs `cargo clippy`, which executes the project's build scripts and proc macros, as any build does. In a repository you do not trust, use `--no-cargo`.
 - **The only other download is the binary.** The launcher can fetch a checksum-verified binary from this repository's GitHub releases.
 - **A dry run sends nothing.** `--dry-run` or `dry_run: true` returns the exact request bodies instead.
 - **Secret files are never sent.** The server skips them even when the diff changes them. That covers `.env*`, `*.pem`, `*.key`, `id_rsa*`, and credential or secret files.
@@ -255,7 +282,7 @@ startup_timeout_sec = 20
 
 Codex does not set `CLAUDE_PROJECT_DIR`. The server then uses MCP roots if the client offers them, and otherwise its working directory. If reviews target the wrong directory, pass `repo_path` explicitly.
 
-The skill and agent are Claude Code features. In other clients, call `evaluate_rust_changes` and then `verify_rust_findings` yourself. The server's `instructions` describe that flow.
+The skill and agent are Claude Code features. In other clients, call `cargo_diagnostics`, then `evaluate_rust_changes`, then `verify_rust_findings` yourself. The server's `instructions` describe that flow.
 
 I have not tested the Codex setup. It follows Codex's MCP documentation.
 
@@ -274,8 +301,8 @@ I have not tested the Codex setup. It follows Codex's MCP documentation.
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && bash scripts/smoke.sh
 ```
 
-- **Add a fixture.** Create `fixtures/{buggy,clean}/<name>/` with `before.rs`, `after.rs` and `fixture.toml`. The TOML holds the file path, extra `deps`, and a `[claim]` located by `start` and `end` substrings. Buggy fixtures also list `expected_dimensions`. Then re-record with a key.
-- **Add a question or dimension.** Edit the data in [`src/questions.rs`](src/questions.rs). Its tests check wording rules and unique ids. They also check that gates compile and that no diff marker opens a gate. Add or update the dimension's reference file.
+- **Add a fixture.** Create `fixtures/{buggy,clean}/<name>/` with `before/` and `after/`, two snapshots of a small crate that builds, and a `fixture.toml`. The TOML holds the claim's file, a `[claim]` located by `start` and `end` substrings, and `tool_catches`: whether Clippy or cargo-semver-checks reports the bug. Buggy fixtures also list `expected_dimensions`. A fixture modelled on a real bug cites it in `source` and is a fresh minimal reproduction, never copied code. Give each fixture one defect and no incidental tool warning. Then re-record with a key.
+- **Add a question or dimension.** Edit the data in [`src/questions.rs`](src/questions.rs). First check that no lint answers it: `clippy-driver -W help` lists them. A question needs a `beyond_tooling` sentence, and `tool_overlap` lists the lints that come close. The tests check wording rules, unique ids, that every named lint exists in the installed Clippy, that gates compile, and that no diff marker opens a gate. Add or update the dimension's reference file.
 - **Add a framework profile.** Add a `Profile` entry with detection crates, questions and `verified_against`. Add `skills/rust-review/references/frameworks/<name>.md`. The pipeline does not change.
 
 Licence: MIT.
