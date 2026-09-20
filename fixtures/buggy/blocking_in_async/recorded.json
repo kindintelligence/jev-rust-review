@@ -15,13 +15,13 @@
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.02,
+          "score": 0.01,
           "probabilities": {
-            "0": 0.98,
-            "1": 0.02,
+            "0": 0.99,
+            "1": 0.01,
             "2": 0.0
           },
-          "confidence": 0.97,
+          "confidence": 0.98,
           "legend": {}
         },
         "api.breaking_change": {
@@ -38,7 +38,7 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.48
+          "noul": 0.49
         },
         "type_design.loose_types": {
           "type": "noul",
@@ -50,13 +50,13 @@
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.35,
+          "score": 0.33,
           "probabilities": {
-            "0": 0.66,
-            "1": 0.34,
+            "0": 0.67,
+            "1": 0.33,
             "2": 0.0
           },
-          "confidence": 0.48,
+          "confidence": 0.5,
           "legend": {}
         },
         "api.breaking_change": {
@@ -65,7 +65,7 @@
         },
         "security.injection": {
           "type": "noul",
-          "noul": 0.63
+          "noul": 0.62
         },
         "security.unbounded_input": {
           "type": "noul",
@@ -76,7 +76,7 @@
         "input_tokens": 0
       }
     },
-    "6c60b31b1c8a4145": {
+    "ff9daa5f47623ebf": {
       "model": "jev-1.13.0",
       "answers": {
         "support": {
@@ -91,24 +91,24 @@
         },
         "severity": {
           "type": "score",
-          "score": 1.44,
+          "score": 1.42,
           "probabilities": {
             "0": 0.01,
-            "1": 0.65,
-            "2": 0.24,
-            "3": 0.1
+            "1": 0.64,
+            "2": 0.27,
+            "3": 0.08
           },
-          "confidence": 0.54
+          "confidence": 0.56
         },
         "category": {
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
-            "debatable_tradeoff": 0.13,
-            "real_defect": 0.87,
+            "debatable_tradeoff": 0.17,
+            "real_defect": 0.83,
             "style_preference": 0.0
           },
-          "confidence": 0.8
+          "confidence": 0.75
         }
       },
       "usage": {

@@ -7,11 +7,11 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.49
+          "noul": 0.46
         },
         "concurrency.check_then_act": {
           "type": "noul",
-          "noul": 0.89
+          "noul": 0.88
         },
         "idiom.clarity": {
           "type": "score",
@@ -21,12 +21,12 @@
             "1": 0.07,
             "2": 0.0
           },
-          "confidence": 0.89,
+          "confidence": 0.9,
           "legend": {}
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.25
+          "noul": 0.3
         },
         "security.injection": {
           "type": "noul",
@@ -37,7 +37,7 @@
         "input_tokens": 0
       }
     },
-    "42cf1e3280ece291": {
+    "dd3fded3e741bfa3": {
       "model": "jev-1.13.0",
       "answers": {
         "support": {
@@ -45,10 +45,10 @@
           "choice": "supported",
           "probabilities": {
             "insufficient_context": 0.01,
-            "refuted": 0.1,
-            "supported": 0.89
+            "refuted": 0.13,
+            "supported": 0.86
           },
-          "confidence": 0.83
+          "confidence": 0.8
         },
         "severity": {
           "type": "score",

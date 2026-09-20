@@ -15,13 +15,13 @@
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.03,
+          "score": 0.02,
           "probabilities": {
-            "0": 0.97,
-            "1": 0.03,
+            "0": 0.98,
+            "1": 0.02,
             "2": 0.0
           },
-          "confidence": 0.95,
+          "confidence": 0.97,
           "legend": {}
         },
         "api.breaking_change": {
@@ -38,11 +38,11 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.1
+          "noul": 0.09
         },
         "error_handling.lossy": {
           "type": "noul",
-          "noul": 0.16
+          "noul": 0.19
         },
         "idiom.clarity": {
           "type": "score",
@@ -61,7 +61,7 @@
         },
         "security.injection": {
           "type": "noul",
-          "noul": 0.11
+          "noul": 0.12
         },
         "security.unbounded_input": {
           "type": "noul",
@@ -72,18 +72,18 @@
         "input_tokens": 0
       }
     },
-    "0cb985cc972d9f72": {
+    "4e3d5de81f436355": {
       "model": "jev-1.13.0",
       "answers": {
         "support": {
           "type": "choice",
           "choice": "supported",
           "probabilities": {
-            "insufficient_context": 0.15,
+            "insufficient_context": 0.0,
             "refuted": 0.01,
-            "supported": 0.84
+            "supported": 0.99
           },
-          "confidence": 0.76
+          "confidence": 0.98
         },
         "severity": {
           "type": "score",
@@ -100,11 +100,11 @@
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
-            "debatable_tradeoff": 0.45,
-            "real_defect": 0.55,
+            "debatable_tradeoff": 0.21,
+            "real_defect": 0.79,
             "style_preference": 0.0
           },
-          "confidence": 0.32
+          "confidence": 0.68
         }
       },
       "usage": {

@@ -341,7 +341,7 @@ async fn recorded_answers_meet_targets() {
         metrics.add(f, &ev, &vr);
     }
     eprintln!("{}\n{}", metrics.rows.join("\n"), metrics.summary());
-    // Floors, measured against jev-1.13.0 on 2026-09-19 (see README "Eval
+    // Floors, measured against jev-1.13.0 on 2026-09-20 (see README "Eval
     // results"). The corpus now holds only bugs the tools miss, many of
     // which span functions or files, so these are lower than they were on
     // the first corpus. They record what Jev does; they were not tuned.
@@ -356,13 +356,13 @@ async fn recorded_answers_meet_targets() {
         "a bait claim passed verification"
     );
     assert!(
-        metrics.true_claims_reported >= 12,
+        metrics.true_claims_reported >= 16,
         "fewer true claims verified: {}/{}",
         metrics.true_claims_reported,
         metrics.buggy
     );
     assert!(
-        metrics.true_claims_dismissed <= 2,
+        metrics.true_claims_dismissed <= 1,
         "more true claims dismissed: {}",
         metrics.true_claims_dismissed
     );

@@ -7,7 +7,7 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.32
+          "noul": 0.25
         },
         "idiom.clarity": {
           "type": "score",
@@ -29,7 +29,7 @@
         "input_tokens": 0
       }
     },
-    "991b7b81a7f7cc92": {
+    "d7ed171694bae170": {
       "model": "jev-1.13.0",
       "answers": {
         "support": {
@@ -37,31 +37,31 @@
           "choice": "refuted",
           "probabilities": {
             "insufficient_context": 0.0,
-            "refuted": 0.95,
-            "supported": 0.05
+            "refuted": 0.96,
+            "supported": 0.04
           },
-          "confidence": 0.92
+          "confidence": 0.93
         },
         "severity": {
           "type": "score",
-          "score": 0.03,
+          "score": 0.05,
           "probabilities": {
-            "0": 0.98,
+            "0": 0.97,
             "1": 0.01,
-            "2": 0.01,
+            "2": 0.02,
             "3": 0.0
           },
-          "confidence": 0.97
+          "confidence": 0.95
         },
         "category": {
           "type": "choice",
           "choice": "style_preference",
           "probabilities": {
-            "debatable_tradeoff": 0.11,
+            "debatable_tradeoff": 0.09,
             "real_defect": 0.0,
-            "style_preference": 0.89
+            "style_preference": 0.91
           },
-          "confidence": 0.83
+          "confidence": 0.87
         }
       },
       "usage": {

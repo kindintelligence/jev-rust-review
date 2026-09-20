@@ -1025,7 +1025,7 @@ pub const SUPPORT_OPTIONS: &[(&str, &str)] = &[
     ),
     (
         INSUFFICIENT_CONTEXT,
-        "Whether `claim` is true depends on code that is outside `code`.",
+        "Whether `claim` is true depends on code that is in neither `code` nor `related_code`.",
     ),
 ];
 

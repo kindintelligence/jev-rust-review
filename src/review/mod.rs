@@ -4,6 +4,7 @@
 mod cargo_facts;
 mod diagnostics;
 mod evaluate;
+mod related;
 mod types;
 mod verify;
 

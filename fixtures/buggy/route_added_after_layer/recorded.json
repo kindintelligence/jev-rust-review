@@ -7,17 +7,17 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.19
+          "noul": 0.15
         },
         "idiom.clarity": {
           "type": "score",
           "score": 0.15,
           "probabilities": {
-            "0": 0.86,
-            "1": 0.14,
+            "0": 0.85,
+            "1": 0.15,
             "2": 0.0
           },
-          "confidence": 0.78,
+          "confidence": 0.77,
           "legend": {}
         }
       },
@@ -30,17 +30,17 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.09
+          "noul": 0.08
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.02,
+          "score": 0.01,
           "probabilities": {
-            "0": 0.98,
-            "1": 0.02,
+            "0": 0.99,
+            "1": 0.01,
             "2": 0.0
           },
-          "confidence": 0.97,
+          "confidence": 0.98,
           "legend": {}
         },
         "api.breaking_change": {
@@ -49,36 +49,36 @@
         },
         "axum.layer_order": {
           "type": "noul",
-          "noul": 0.08
+          "noul": 0.09
         }
       },
       "usage": {
         "input_tokens": 0
       }
     },
-    "1f61fe522d126228": {
+    "06da519627814a2e": {
       "model": "jev-1.13.0",
       "answers": {
         "support": {
           "type": "choice",
           "choice": "refuted",
           "probabilities": {
-            "insufficient_context": 0.01,
-            "refuted": 0.65,
-            "supported": 0.34
+            "insufficient_context": 0.0,
+            "refuted": 0.67,
+            "supported": 0.33
           },
-          "confidence": 0.46
+          "confidence": 0.5
         },
         "severity": {
           "type": "score",
-          "score": 2.99,
+          "score": 2.96,
           "probabilities": {
-            "0": 0.0,
+            "0": 0.01,
             "1": 0.0,
             "2": 0.0,
-            "3": 1.0
+            "3": 0.99
           },
-          "confidence": 0.99
+          "confidence": 0.96
         },
         "category": {
           "type": "choice",
@@ -88,7 +88,7 @@
             "real_defect": 0.98,
             "style_preference": 0.01
           },
-          "confidence": 0.98
+          "confidence": 0.97
         }
       },
       "usage": {

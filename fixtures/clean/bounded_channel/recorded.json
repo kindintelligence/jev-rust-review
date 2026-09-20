@@ -21,7 +21,7 @@
             "1": 0.02,
             "2": 0.0
           },
-          "confidence": 0.97,
+          "confidence": 0.96,
           "legend": {}
         },
         "api.breaking_change": {
@@ -38,11 +38,11 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.56
+          "noul": 0.57
         },
         "correctness.overflow": {
           "type": "noul",
-          "noul": 0.32
+          "noul": 0.3
         },
         "correctness.drop_order": {
           "type": "noul",
@@ -50,7 +50,7 @@
         },
         "error_handling.swallowed": {
           "type": "noul",
-          "noul": 0.69
+          "noul": 0.67
         },
         "async.blocking_call": {
           "type": "noul",
@@ -62,37 +62,37 @@
         },
         "async.unbounded": {
           "type": "noul",
-          "noul": 0.09
+          "noul": 0.1
         },
         "async.sequential_awaits": {
           "type": "noul",
-          "noul": 0.62
+          "noul": 0.61
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.29,
+          "score": 0.31,
           "probabilities": {
-            "0": 0.73,
-            "1": 0.26,
+            "0": 0.71,
+            "1": 0.28,
             "2": 0.01
           },
-          "confidence": 0.57,
+          "confidence": 0.54,
           "legend": {}
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.12
+          "noul": 0.13
         },
         "tokio.no_shutdown": {
           "type": "noul",
-          "noul": 0.16
+          "noul": 0.15
         }
       },
       "usage": {
         "input_tokens": 0
       }
     },
-    "11bc79861c18c79d": {
+    "e67f0ed79e0b278b": {
       "model": "jev-1.13.0",
       "answers": {
         "support": {
@@ -100,31 +100,31 @@
           "choice": "refuted",
           "probabilities": {
             "insufficient_context": 0.0,
-            "refuted": 0.98,
-            "supported": 0.02
+            "refuted": 0.96,
+            "supported": 0.04
           },
-          "confidence": 0.96
+          "confidence": 0.94
         },
         "severity": {
           "type": "score",
-          "score": 1.86,
+          "score": 1.99,
           "probabilities": {
-            "0": 0.05,
-            "1": 0.22,
-            "2": 0.56,
-            "3": 0.17
+            "0": 0.02,
+            "1": 0.19,
+            "2": 0.57,
+            "3": 0.22
           },
-          "confidence": 0.52
+          "confidence": 0.56
         },
         "category": {
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
-            "debatable_tradeoff": 0.33,
-            "real_defect": 0.67,
+            "debatable_tradeoff": 0.29,
+            "real_defect": 0.71,
             "style_preference": 0.0
           },
-          "confidence": 0.5
+          "confidence": 0.56
         }
       },
       "usage": {

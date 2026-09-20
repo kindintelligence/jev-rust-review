@@ -53,6 +53,9 @@ pub struct Flag {
     pub changed_lines: Vec<(u32, u32)>,
     pub dimension: Dimension,
     pub question: &'static str,
+    /// The question to answer by reading the unit. A flag is this question,
+    /// not an answer to it.
+    pub check: String,
     pub signal: f64,
     pub threshold: f64,
 }
@@ -152,6 +155,9 @@ pub struct EvaluateOutput {
     pub project: ProjectInfo,
     pub active_profiles: Vec<String>,
     pub flagged: Vec<Flag>,
+    /// How to use `flagged`. Stated in the output because not every client
+    /// reads the skill.
+    pub reading_flags: &'static str,
     /// Flags dropped because `cargo_diagnostics` already reported the defect
     /// on the same lines. Never report these as findings of their own.
     #[serde(skip_serializing_if = "Vec::is_empty")]

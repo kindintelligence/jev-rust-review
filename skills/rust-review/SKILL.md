@@ -24,6 +24,8 @@ Prefer precision over coverage. "No material issues found" is a good outcome. Sa
 - Everything that is not a flag is the **scope**. Empty means uncommitted changes, including untracked `.rs` files. `staged`, a commit, `a..b`, `a...b`, and a path are also accepted. Prefix with `rev:` or `path:` to disambiguate.
 - `--dry-run`: call the evaluation tool with `dry_run: true`. Summarise which files, units and questions *would* be sent and roughly how many tokens they would cost, then stop. Nothing leaves the machine.
 - `--no-cargo`: skip step 2 and the tests in step 4.
+
+**Calling the tools.** `cargo_diagnostics`, `evaluate_rust_changes` and `verify_rust_findings` are MCP tools. Call them directly as tools, never through Bash or PowerShell. When the scope is empty, leave `scope` out and call the tool with `{}`. Never write a key with no value.
 - `--json`: end the report with the machine-readable block described in step 7.
 
 ## 2. Collect the tool facts
@@ -53,7 +55,10 @@ Call `evaluate_rust_changes` with `scope` (and `dry_run` if asked). Read these f
   - `ok` or `partial`: continue. For `partial`, mention `reason`.
   - `jev_unavailable`: continue **without Jev**. Treat every unit in `units` as flagged. Put this banner at the top of the report, verbatim except for the reason: `> Jev triage and verification were skipped: <reason>. This is a Claude-only review.` Still run step 6: it removes duplicates of tool diagnostics without Jev.
   - `dry_run`: report as described in step 1, then stop.
-- `flagged`: (unit, dimension) pairs, strongest first. **A flag says where to look. It is not a finding.**
+- `flagged`: (unit, dimension) pairs, strongest first. Each carries `check`, a question about that unit. **A flag is that question. It is not an answer, and it is not a finding.** Most flags come to nothing. Read the unit and answer the question yourself:
+  - if the answer is no, move on and do not mention the flag;
+  - if the answer is yes, you still need the concrete failure that step 5 asks for before it is a candidate;
+  - never report something because it was flagged. "This `unwrap` can panic if the mutex is poisoned" and "this sum can overflow" are flags restated, not findings, unless you can show the input that gets there.
 - `tool_covered`: flags on lines where a tool already reported the same defect. They never become findings. Use them only as a hint that the tool's diagnostic there deserves the closer look described in step 2.
 - `references`: the reference files to load, relative to this skill directory (`${CLAUDE_SKILL_DIR}`). Load **only** those, with Read, before judging code in that dimension.
 - `project`: edition, MSRV (`rust_version`), crate kind, `async_runtimes`, and profiles. Never assume Tokio: use only what `async_runtimes` says.
@@ -81,7 +86,7 @@ A candidate finding needs:
 - a defect that **no tool reported**. If `cargo_diagnostics` already has it on those lines, it is not a candidate;
 - a concrete failure: the input, interleaving, or call that breaks;
 - the exact file and line range, taken from the code you read;
-- **one** defect, stated in **one** sentence that names identifiers, not line numbers. Put everything the claim relies on inside the line range you give. A defect may depend on code elsewhere (lock ordering across functions, callers of a changed `pub` API). If so, say so in your evidence. Jev will likely answer `insufficient_context`;
+- **one** defect, stated in **one** sentence that names identifiers, not line numbers. Name the functions and types the defect depends on, including ones in other files: the server finds their definitions and shows them to Jev. Put everything the claim relies on inside the line range you give. A defect may depend on code elsewhere (lock ordering across functions, callers of a changed `pub` API). If so, say so in your evidence. Jev will likely answer `insufficient_context`;
 - a severity: critical, high, medium, or low;
 - your own confidence in words, High or Medium, with the evidence. Drop Low-confidence ideas.
 
@@ -91,8 +96,8 @@ Call `verify_rust_findings` with all candidates (at most 20) and the same `scope
 
 - `verdict: tool_reported`: a tool already reported this defect on these lines, and `tool` names it. Drop the finding. The tool's entry stands, and you may add your failure scenario to it.
 - `verdict: report`: Jev agrees. Keep it.
-- `verdict: insufficient_context`: Jev could not judge the claim from the local code (its `support` answer was `insufficient_context`). This is **not a refutation**. If your own confidence is High, keep the finding. Say in the report that Jev could not verify it from local context. If your confidence is Medium, move it to "considered and dismissed".
-- `verdict: uncertain` or `verdict: dismiss`: Jev did not confirm the claim. **This is a second opinion, not a ruling.** Jev reads only the excerpt around the claimed lines. It cannot see the other file, the documented behaviour of a library, or the caller. Do this:
+- `verdict: insufficient_context`: Jev could not judge the claim from what it was shown. `unseen`, when present, lists names in your claim that it never saw. This is **not a refutation**. If your own confidence is High, keep the finding. Say in the report that Jev could not verify it from local context. If your confidence is Medium, move it to "considered and dismissed".
+- `verdict: uncertain` or `verdict: dismiss`: Jev did not confirm the claim. **This is a second opinion, not a ruling.** Jev reads the excerpt around the claimed lines and the definitions of items your claim names. It does not know the documented behaviour of a library, and it cannot follow a caller you did not name. Do this:
   1. Re-read the claimed lines and the code the claim depends on. Look for what Jev may have seen: a guard you missed, a check earlier in the function, a type that makes the failure impossible.
   2. If you find it, the claim was wrong. Move it to "considered and dismissed".
   3. If you can still state the concrete failure step by step, and your confidence is High, **keep the finding**. Show Jev's number and say in one line why you kept it, for example "depends on `forward` in src/sink.rs, which Jev's excerpt does not include".

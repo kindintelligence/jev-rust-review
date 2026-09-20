@@ -14,16 +14,27 @@ use rmcp::{
 use serde::Deserialize;
 use std::path::PathBuf;
 
+/// A smaller model sends `null`, `{}` or `[]` where a string is optional.
+/// None of those is worth failing a review over: anything that is not a
+/// string is read as absent.
+fn lenient_string<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    Ok(match serde_json::Value::deserialize(d)? {
+        serde_json::Value::String(s) => Some(s),
+        _ => None,
+    })
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct EvaluateArgs {
     /// Repository path. Defaults to the session's project directory.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_string")]
     pub repo_path: Option<String>,
-    /// What to review: empty or "working" (uncommitted changes incl. untracked
+    /// What to review. Leave it out for uncommitted changes: call the tool
+    /// with `{}`. Otherwise: "working" (uncommitted changes incl. untracked
     /// .rs files), "staged", a range like "main...HEAD" or "a..b", a single
     /// commit ("rev:<sha>" or a bare rev), or a path ("path:src/x.rs" or an
     /// existing path; reviewed whole if it has no uncommitted changes).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_string")]
     pub scope: Option<String>,
     /// Return the exact request bodies that would be sent to Jev without
     /// sending anything.
@@ -40,22 +51,23 @@ pub struct EvaluateArgs {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DiagnosticsArgs {
     /// Repository path. Defaults to the session's project directory.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_string")]
     pub repo_path: Option<String>,
     /// The same scope string the review uses; it decides which lines count
-    /// as changed.
-    #[serde(default)]
+    /// as changed. Leave it out for uncommitted changes: call the tool with
+    /// `{}`.
+    #[serde(default, deserialize_with = "lenient_string")]
     pub scope: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct VerifyArgs {
     /// Repository path. Defaults to the session's project directory.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_string")]
     pub repo_path: Option<String>,
     /// The scope the findings came from; decides which revision of each file
     /// is read (working tree by default).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_string")]
     pub scope: Option<String>,
     /// Return the exact request bodies without sending anything.
     #[serde(default)]
@@ -174,7 +186,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Triage Rust changes with TypeSafe Jev. Collects the diff for a scope itself, splits it into small units (changed lines plus enclosing items), asks typed yes/no and rating questions per review dimension, and returns per-unit answers, probabilities, thresholds, `flagged` (unit, dimension) pairs sorted by signal, project facts (edition, MSRV, runtime, framework profiles, and whether the diff touches tests), deterministic Cargo facts, redaction counts, token usage and cost. Every question asks for a judgement no compiler check, lint or cargo tool makes; a flag on lines where cargo_diagnostics already reported the same defect is moved to `tool_covered` and must not become a finding. status is ok | partial | jev_unavailable | dry_run. Flags mark where to look; they are not findings."
+        description = "Triage Rust changes with TypeSafe Jev. Collects the diff for a scope itself, splits it into small units (changed lines plus enclosing items), asks typed yes/no and rating questions per review dimension, and returns per-unit answers, probabilities, thresholds, `flagged` (unit, dimension) pairs sorted by signal, project facts (edition, MSRV, runtime, framework profiles, and whether the diff touches tests), deterministic Cargo facts, redaction counts, token usage and cost. Every question asks for a judgement no compiler check, lint or cargo tool makes; a flag on lines where cargo_diagnostics already reported the same defect is moved to `tool_covered` and must not become a finding. status is ok | partial | jev_unavailable | dry_run. Each flag carries `check`, the question to answer by reading the code. A flag is that question, never an answer: report nothing because it was flagged."
     )]
     async fn evaluate_rust_changes(
         &self,
@@ -197,7 +209,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Verify candidate Rust review findings with TypeSafe Jev before reporting them. For each finding (dimension, file, start_line, end_line, one-sentence claim naming identifiers rather than line numbers, proposed severity) the server re-reads the code itself and returns: `support` (Jev's choice of supported / refuted / insufficient_context, with probabilities), `supported` (the probability of `supported`, which the report bar applies to), Jev's independent `severity` score (level name, p_high_or_above, confidence), a `category` choice (real_defect / debatable_tradeoff / style_preference), and a `verdict`: report | insufficient_context | uncertain | dismiss | tool_reported. tool_reported means cargo_diagnostics already reported this defect on these lines (`tool` names the lint): drop the finding and let the tool's diagnostic stand. That check needs no API key, so call this tool even when Jev is unavailable. Every verdict except tool_reported is a second opinion from a model that sees one excerpt, not a ruling. insufficient_context means the claim depends on code outside the excerpt; it is not a refutation. On uncertain or dismiss, re-read the code for what Jev may have seen; drop the finding if you find it, and keep it if you can still demonstrate the concrete failure."
+        description = "Verify candidate Rust review findings with TypeSafe Jev before reporting them. For each finding (dimension, file, start_line, end_line, one-sentence claim naming identifiers rather than line numbers, proposed severity) the server re-reads the code itself and returns: `support` (Jev's choice of supported / refuted / insufficient_context, with probabilities), `supported` (the probability of `supported`, which the report bar applies to), Jev's independent `severity` score (level name, p_high_or_above, confidence), a `category` choice (real_defect / debatable_tradeoff / style_preference), and a `verdict`: report | insufficient_context | uncertain | dismiss | tool_reported. tool_reported means cargo_diagnostics already reported this defect on these lines (`tool` names the lint): drop the finding and let the tool's diagnostic stand. That check needs no API key, so call this tool even when Jev is unavailable. The server sends Jev the claimed lines, their enclosing item, and the definitions of any items the claim names elsewhere in the repository. `unseen` lists names in the claim that Jev was still not shown; while there are any, a claim Jev did not confirm comes back insufficient_context and never dismiss. Every verdict except tool_reported is a second opinion from a model that sees only that, not a ruling. insufficient_context means the claim depends on code outside the excerpt; it is not a refutation. On uncertain or dismiss, re-read the code for what Jev may have seen; drop the finding if you find it, and keep it if you can still demonstrate the concrete failure."
     )]
     async fn verify_rust_findings(
         &self,
@@ -240,6 +252,24 @@ impl ServerHandler for Server {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_scope_that_is_not_a_string_is_no_scope() {
+        for input in [
+            "{}",
+            r#"{"scope": null}"#,
+            r#"{"scope": {}}"#,
+            r#"{"scope": []}"#,
+            r#"{"scope": 3, "repo_path": null}"#,
+        ] {
+            let args: DiagnosticsArgs = serde_json::from_str(input).expect(input);
+            assert_eq!(args.scope, None, "{input}");
+            let args: EvaluateArgs = serde_json::from_str(input).expect(input);
+            assert_eq!(args.scope, None, "{input}");
+        }
+        let args: EvaluateArgs = serde_json::from_str(r#"{"scope": "staged"}"#).expect("valid");
+        assert_eq!(args.scope.as_deref(), Some("staged"));
+    }
 
     #[test]
     fn file_uris() {

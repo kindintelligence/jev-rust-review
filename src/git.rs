@@ -74,7 +74,22 @@ fn validate_token(s: &str, what: &str) -> Result<()> {
 /// whether a bare string names an existing path.
 pub fn parse_scope(raw: Option<&str>, repo: &Path) -> Result<Scope> {
     let s = raw.map(str::trim).unwrap_or("");
-    if s.is_empty() || s == "working" || s == "worktree" || s == "working-tree" {
+    // Every spelling of "no scope" a model has been seen to send.
+    const UNCOMMITTED: &[&str] = &[
+        "",
+        "working",
+        "worktree",
+        "working-tree",
+        "uncommitted",
+        "unstaged",
+        "changes",
+        "default",
+        "none",
+        "null",
+        "undefined",
+        "{}",
+    ];
+    if UNCOMMITTED.contains(&s.to_ascii_lowercase().as_str()) {
         return Ok(Scope::Working);
     }
     validate_token(s, "scope")?;
@@ -431,6 +446,43 @@ impl Git {
             .collect())
     }
 
+    /// Lines of `.rs` files on the new side that match an extended regex, as
+    /// (file, line). `pattern` is always built in code from `[A-Za-z0-9_]`
+    /// names and fixed text; it never comes from a caller. No match, or a
+    /// failed search, is an empty list: the search only adds context.
+    pub fn grep_rust(&self, side: &NewSide, pattern: &str) -> Vec<(String, u32)> {
+        let mut args = vec!["grep", "-n", "-I", "-E", "--no-color"];
+        let tree = match side {
+            NewSide::WorkingTree => {
+                args.push("--untracked");
+                None
+            }
+            NewSide::Index => {
+                args.push("--cached");
+                None
+            }
+            NewSide::Commit(sha) => Some(sha.as_str()),
+        };
+        args.extend(["-e", pattern]);
+        args.extend(tree);
+        args.extend(["--", "*.rs"]);
+        let Ok(out) = self.run_str(&args) else {
+            return Vec::new();
+        };
+        out.lines()
+            .filter_map(|l| {
+                let l = match tree {
+                    Some(sha) => l.strip_prefix(sha)?.strip_prefix(':')?,
+                    None => l,
+                };
+                let mut parts = l.splitn(3, ':');
+                let file = parts.next()?;
+                let line = parts.next()?.parse().ok()?;
+                Some((file.to_string(), line))
+            })
+            .collect()
+    }
+
     /// Tracked files under a path (for whole-file review of a Path scope).
     pub fn tracked_under(&self, path: &str) -> Result<Vec<String>> {
         let out = self.run(&["ls-files", "-z", "--", path])?;
@@ -507,6 +559,10 @@ mod tests {
     fn keywords() {
         assert_eq!(parse_scope(None, Path::new(".")).unwrap(), Scope::Working);
         assert_eq!(p("  ").unwrap(), Scope::Working);
+        // What a model sends when it has no scope to give.
+        for none in ["uncommitted", "Default", "null", "none", "{}", "changes"] {
+            assert_eq!(p(none).unwrap(), Scope::Working, "{none}");
+        }
         assert_eq!(p("staged").unwrap(), Scope::Staged);
     }
 

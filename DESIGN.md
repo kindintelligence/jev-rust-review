@@ -91,7 +91,7 @@ The output is compact JSON text:
 - `project`: crates, workspace members, policy files, toolchain and `tests`.
   - Each crate has its name, directory, edition, `rust_version`, kind, `async_runtimes`, profiles and features. It also has `mutually_exclusive_features`.
   - `tests` holds `diff_touches_tests` and the lists of test and non-test units. Code computes it from file roles and `#[cfg(test)]`/`#[test]` spans. It is a fact about the diff, not a Jev question.
-- `flagged`: unit, dimension, question, signal and threshold, strongest first. Claude reads this first.
+- `flagged`: unit, dimension, question, `check`, signal and threshold, strongest first. `check` is the question itself, reworded to be about the unit. A flag is a question for the agent to answer by reading the code, and `reading_flags` says so in the output, because a smaller model reported a bare flag as a finding (§10).
 - `references`: the dimension and profile reference files to load.
 - `units`: for each unit, `id`, `file`, `lines`, `changed_lines`, `role` and `status`. For each question: `dimension`, `primitive`, `answer`, `probabilities?`, `confidence?`, `signal`, `threshold` and `flagged`.
 - `cargo_facts`: deterministic manifest and lockfile findings:
@@ -119,7 +119,10 @@ The server re-reads the file itself. The state holds these parts:
 - the enclosing item, with two marker columns. The first is `>` on claimed lines. The second is the diff marker (`+`, `-` or a space), so removed lines show the old side;
 - the imports and the enclosing `impl` or `trait` header;
 - any matching documentation facts (§4);
+- `related_code`: the definitions of items the claim names that lie outside the excerpt. The server takes every word of the claim that could be an item name, searches the new side's `.rs` files with one `git grep` for `fn`, `struct`, `enum`, `trait`, `type`, `const` or `static` followed by one of them, and sends the innermost item around each hit. At most 4 definitions, 40 lines each, 1,500 tokens in all. The pattern is built from `[A-Za-z0-9_]` names only;
 - the claim.
+
+The result also carries `unseen`: names the claim writes as code (backticked, a path, snake case, a call, camel case) that appear nowhere in what Jev was shown.
 
 The proposed severity is never sent, so Jev judges severity independently.
 
@@ -244,7 +247,7 @@ A separate `notes` field in the state marks the code as untrusted data. The code
 ## 5. Units and chunking
 
 - Only `.rs` files become code units. Each `Cargo.toml` diff becomes one manifest unit. `Cargo.lock` is reduced to deterministic facts.
-- `syn` parses each file. Each non-blank changed line maps to its innermost enclosing item: a fn, a method or a top-level item. The unit is the union of those items.
+- `syn` parses each file. Each non-blank changed line maps to its innermost enclosing item: a fn, a method or a top-level item. **Each changed item is one unit.** Until 2026-09-20 neighbouring items merged, so a tidy-up of 30 functions in 3 files came out as 3 units, all flagged, and triage had nothing to narrow. Only changed lines outside any item still merge with each other.
 - A line outside any item gets ±2 lines of context. If the file did not parse, it gets ±6.
 - Code is shown diff-style without line numbers. The state adds the top-level `use` lines and the enclosing `impl` or `trait` header.
 - Tokens are estimated as `ceil(bytes / 3)`. A unit over `max_unit_tokens` (6,000) is split into windows around its changes.
@@ -289,6 +292,8 @@ The verdict is the first rule that matches:
 3. `insufficient_context` if `support` chose `insufficient_context`. **This is not a refutation.** Cross-file findings, such as lock ordering or semver breaks, land here. The skill keeps them when Claude's own confidence is High. It says Jev could not verify them from local context.
 4. `dismiss` if `P(supported)` is below 0.40.
 5. `uncertain` otherwise.
+
+**Jev cannot refute what it was not shown.** When `unseen` is not empty, a claim Jev did not confirm is `insufficient_context`: a `refuted` choice, a low `P(supported)` and `uncertain` all map to it. Agreement still reports, and a confident `style_preference` still dismisses, because that judges the claim and not the code.
 
 **A verdict is a second opinion, not a gate.** Only `tool_reported` removes a finding, because that check is code. Until 2026-09-20 the skill dropped a finding on `dismiss`, and on `uncertain` without deterministic evidence. The first three-mode run (§10) showed the cost: in 14 of the 15 runs where the full pipeline missed the seeded bug, Claude had found it and Jev had not confirmed it. Each of those bugs depends on something outside the excerpt Jev reads: another file, or the documented behaviour of a library. The skill now treats `uncertain` and `dismiss` as a reason to re-read the code for what Jev may have seen. The agent drops the finding if it finds that, and keeps it, with Jev's number shown, if it can still state the concrete failure with High confidence.
 
@@ -399,6 +404,19 @@ Haiku also could not drive the tools reliably: 21 of 120 runs never got a result
 
 Not yet done, and the owner's call: make the server's output safe for a model that obeys it. The candidates are to return flags as questions to check and not as labels, to stop returning `dismiss` for a claim whose evidence is outside the excerpt, to give verification the definitions the claim names, to accept an absent or empty `scope` however it is spelt, and to make one unit per changed function. Each is a change after results, so each needs a re-run.
 
+**Third change, for a smaller model (2026-09-20).** The owner asked for four changes and a re-run on Haiku. They are the first four candidates above:
+
+| Change | Where |
+|---|---|
+| A flag is returned as a question to check (`check`, `reading_flags`), and the skill says a restated flag is not a finding | §3, skill step 3 |
+| Verification is shown the definitions the claim names, and never returns `dismiss` or `uncertain` while the claim names code it was not shown | §3, §6 |
+| `scope` may be absent, `null`, any non-string, or any of a dozen spellings of "none"; the skill says to call the tools with `{}` and never through a shell | `mcp.rs`, `git.rs`, skill step 1 |
+| One unit per changed item | §5 |
+
+Measured on Jev's two stages alone, with ideal claims and before any Claude run: true claims verified as `report` went from 12 of 19 to 16 of 19, with 0 of 7 bait claims reported in both. `lock_order_inversion` went from 0.21 to 0.93 supported, `length_guard_weakened` from 0.45 to 0.85, and `size_hint_trusted` from 0.50 to 0.90. The three still unconfirmed (`notify_lost_wakeup`, `route_added_after_layer`, `select_drops_send`) rest on documented library behaviour, which no definition in the repository shows. Triage recall stayed at 14 of 19.
+
+The rules for judging the Haiku re-run are rules 1 to 6 above, unchanged. The re-run covers modes C and J, because the unit and skill changes reach both.
+
 ## 11. Progress checklist
 
 - [x] Preflight, private repo created
@@ -412,7 +430,7 @@ Not yet done, and the owner's call: make the server's output safe for a model th
 - [x] `beyond_tooling` and `tool_overlap` on every question; 4 questions deleted, 7 narrowed; deduplication in triage and verification
 - [x] Fixtures as buildable crates; 10 harder fixtures and 2 noisy diffs; three-mode eval harness; decision rules (§10)
 - [x] Three-mode eval: three matrices on two models, published in the README
-- [ ] Make Jev's output safe for a smaller model (§10, second result)
+- [x] First four changes for a smaller model: flags as questions, related definitions and `unseen`, lenient `scope`, one unit per item (§10)
 - [x] Adopt the redesigned questions.rs, Cargo.toml and clippy.toml; new verification model
 - [x] Live eval on the new question ids
 - [x] CI and release workflows

@@ -229,7 +229,7 @@ Every setting is an environment variable.
 
 ## Cost and speed
 
-Jev is close to free. Sixty full reviews used 171,715 Jev input tokens, which is **$0.0072**, against $7.82 of Claude (`claude-sonnet-5`). A review with Jev took 37 s on average and one without took 33 s. The offline Jev-stage eval made 66 requests for 73,484 tokens ($0.0031).
+Jev is close to free. Sixty full reviews used 171,715 Jev input tokens, which is **$0.0072**, against $7.82 of Claude (`claude-sonnet-5`). A review with Jev took 37 s on average and one without took 33 s. The offline Jev-stage eval, with one request per changed function, made 123 requests for 117,727 tokens ($0.0049).
 
 ## Eval results
 
@@ -276,10 +276,10 @@ The corpus is small and synthetic. These numbers say how the pipeline behaves on
 |---|---|
 | Triage flagged the buggy fixture in an expected dimension | 14/19 |
 | Clean fixtures with any triage flag | 4/7 |
-| True claims verified as `report` | 12/19 (2 `insufficient_context`, 3 `uncertain`, 2 `dismiss`) |
+| True claims verified as `report` | 16/19 (2 `uncertain`, 1 `dismiss`). It was 12/19 before verification was shown the definitions a claim names |
 | Bait claims verified as `report` | 0/7 |
 
-The two dismissed true claims are `notify_lost_wakeup` and `route_added_after_layer`. Both depend on a fact outside the excerpt. CI replays the recorded answers offline (`recorded_answers_meet_targets`), so a question or threshold change that lowers these numbers fails the build.
+The three unconfirmed true claims are `notify_lost_wakeup`, `route_added_after_layer` and `select_drops_send`. Each rests on documented library behaviour, which no definition in the repository shows. CI replays the recorded answers offline (`recorded_answers_meet_targets`), so a question or threshold change that lowers these numbers fails the build.
 
 ```bash
 cargo test --test eval                                        # offline replay of Jev's two stages

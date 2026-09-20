@@ -253,7 +253,8 @@ pub fn rust_units(
     }
 
     let spans = item_spans(input.content);
-    let mut regions: Vec<(u32, u32)> = Vec::new();
+    let mut items: BTreeSet<(u32, u32)> = BTreeSet::new();
+    let mut loose: Vec<(u32, u32)> = Vec::new();
     let mut headers: BTreeMap<(u32, u32), String> = BTreeMap::new();
     for &t in &touch {
         let leaf = spans.as_ref().and_then(|sp| {
@@ -263,7 +264,7 @@ pub fn rust_units(
         });
         match leaf {
             Some(s) => {
-                regions.push((s.start, s.end));
+                items.insert((s.start, s.end));
                 if let Some(h) = &s.header {
                     headers.insert((s.start, s.end), h.clone());
                 }
@@ -272,11 +273,16 @@ pub fn rust_units(
                 // Outside any item (imports, attributes) a parsed file needs
                 // little context; without a parse, take more.
                 let w = if spans.is_some() { 2 } else { WINDOW };
-                regions.push((t.saturating_sub(w).max(1), (t + w).min(n_lines)))
+                loose.push((t.saturating_sub(w).max(1), (t + w).min(n_lines)))
             }
         }
     }
-    let regions = merge(regions, 1);
+    // One unit per changed item. Units that merged neighbouring functions
+    // left triage nothing to narrow: a tidy-up of 30 functions came out as 3
+    // units, all flagged. Only lines outside any item merge with each other.
+    let mut regions: Vec<(u32, u32)> = items.into_iter().collect();
+    regions.extend(merge(loose, 1));
+    regions.sort_unstable();
 
     let imports_text = redact::redact_text(&imports(input.content), redactions);
     let mut units = Vec::new();

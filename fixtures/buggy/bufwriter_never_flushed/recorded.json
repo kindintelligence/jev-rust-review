@@ -34,7 +34,7 @@
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.15
+          "noul": 0.19
         },
         "idiom.clarity": {
           "type": "score",
@@ -53,14 +53,14 @@
         },
         "security.injection": {
           "type": "noul",
-          "noul": 0.11
+          "noul": 0.1
         }
       },
       "usage": {
         "input_tokens": 0
       }
     },
-    "4c72071cf1d980a3": {
+    "5e4d62a81d4b25a5": {
       "model": "jev-1.13.0",
       "answers": {
         "support": {
@@ -71,18 +71,18 @@
             "refuted": 0.09,
             "supported": 0.9
           },
-          "confidence": 0.84
+          "confidence": 0.85
         },
         "severity": {
           "type": "score",
-          "score": 2.68,
+          "score": 2.7,
           "probabilities": {
             "0": 0.0,
-            "1": 0.02,
-            "2": 0.27,
-            "3": 0.71
+            "1": 0.03,
+            "2": 0.25,
+            "3": 0.72
           },
-          "confidence": 0.68
+          "confidence": 0.7
         },
         "category": {
           "type": "choice",
@@ -92,7 +92,7 @@
             "real_defect": 0.99,
             "style_preference": 0.0
           },
-          "confidence": 0.98
+          "confidence": 0.99
         }
       },
       "usage": {

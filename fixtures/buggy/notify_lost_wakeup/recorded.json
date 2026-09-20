@@ -22,46 +22,46 @@
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.05
+          "noul": 0.06
         }
       },
       "usage": {
         "input_tokens": 0
       }
     },
-    "98b18784103d78f8": {
+    "38dac13579094876": {
       "model": "jev-1.13.0",
       "answers": {
         "support": {
           "type": "choice",
-          "choice": "refuted",
+          "choice": "supported",
           "probabilities": {
-            "insufficient_context": 0.09,
-            "refuted": 0.57,
-            "supported": 0.34
+            "insufficient_context": 0.02,
+            "refuted": 0.48,
+            "supported": 0.5
           },
-          "confidence": 0.35
+          "confidence": 0.24
         },
         "severity": {
           "type": "score",
-          "score": 1.93,
+          "score": 1.98,
           "probabilities": {
             "0": 0.01,
-            "1": 0.19,
-            "2": 0.66,
-            "3": 0.14
+            "1": 0.18,
+            "2": 0.63,
+            "3": 0.18
           },
-          "confidence": 0.65
+          "confidence": 0.63
         },
         "category": {
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
-            "debatable_tradeoff": 0.02,
-            "real_defect": 0.98,
-            "style_preference": 0.0
+            "debatable_tradeoff": 0.04,
+            "real_defect": 0.95,
+            "style_preference": 0.01
           },
-          "confidence": 0.96
+          "confidence": 0.93
         }
       },
       "usage": {

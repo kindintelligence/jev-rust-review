@@ -737,3 +737,156 @@ async fn insecure_endpoint_reports_the_real_reason() {
         );
     }
 }
+
+// ------------------------------------------------ units, checks, related code
+
+const HELPERS: &str = "use tokio::sync::mpsc::Sender;
+
+pub async fn forward(tx: &Sender<u64>, event: u64) {
+    if tx.send(event).await.is_err() {
+        eprintln!(\"closed\");
+    }
+}
+";
+
+const THREE_FNS_BEFORE: &str = "pub fn one(a: u32) -> u32 {
+    a
+}
+
+pub fn two(a: u32) -> u32 {
+    a
+}
+
+pub fn three(a: u32) -> u32 {
+    a
+}
+";
+
+#[tokio::test]
+async fn each_changed_function_is_its_own_unit() {
+    let r = TestRepo::new();
+    r.write("Cargo.toml", MANIFEST);
+    r.write("src/lib.rs", THREE_FNS_BEFORE);
+    r.commit_all("init");
+    // `one` and `three` change; `two`, between them, does not.
+    r.write(
+        "src/lib.rs",
+        &THREE_FNS_BEFORE
+            .replacen(
+                "    a
+",
+                "    a + 1
+",
+                1,
+            )
+            .replace(
+                "pub fn three(a: u32) -> u32 {
+    a
+",
+                "pub fn three(a: u32) -> u32 {
+    a * 3
+",
+            ),
+    );
+    let out = dry(&r, None).await;
+    let lines: Vec<(u32, u32)> = out.units.iter().map(|u| u.unit.lines).collect();
+    assert_eq!(lines, [(1, 3), (9, 11)]);
+
+    // Adjacent changed functions stay apart too.
+    r.write(
+        "src/lib.rs",
+        &THREE_FNS_BEFORE.replace(
+            "    a
+",
+            "    a + 1
+",
+        ),
+    );
+    let out = dry(&r, None).await;
+    assert_eq!(out.units.len(), 3);
+}
+
+#[tokio::test]
+async fn a_flag_carries_the_question_to_check() {
+    let r = base_repo();
+    r.write("src/lib.rs", AFTER);
+    let (_s, mut cfg) = live_mock(&["concurrency.lock_scope"]).await;
+    cfg.max_retries = 0;
+    let out = review::evaluate(
+        &cfg,
+        &Client::new(&cfg),
+        &r.path(),
+        EvaluateParams::default(),
+    )
+    .await
+    .unwrap();
+    let flag = &out.flagged[0];
+    assert!(flag.check.ends_with('?'), "{}", flag.check);
+    assert!(flag.check.contains("this unit") && !flag.check.contains("`code`"));
+    assert!(out.reading_flags.contains("not a finding"));
+}
+
+#[tokio::test]
+async fn verification_is_shown_the_definitions_a_claim_names() {
+    let r = TestRepo::new();
+    r.write("Cargo.toml", MANIFEST);
+    r.write(
+        "src/lib.rs",
+        "pub mod relay;
+pub mod sink;
+",
+    );
+    r.write("src/sink.rs", HELPERS);
+    r.write(
+        "src/relay.rs",
+        "pub async fn relay() {}
+",
+    );
+    r.commit_all("init");
+    r.write(
+        "src/relay.rs",
+        "use crate::sink::forward;
+
+pub async fn relay(tx: tokio::sync::mpsc::Sender<u64>) {
+    forward(&tx, 1).await;
+}
+",
+    );
+    let finding = |claim: &str| Finding {
+        id: None,
+        dimension: "async".into(),
+        file: "src/relay.rs".into(),
+        start_line: 3,
+        end_line: 5,
+        claim: claim.into(),
+        severity: "high".into(),
+    };
+    let cfg = offline_cfg();
+    let out = review::verify(
+        &cfg,
+        &Client::new(&cfg),
+        &r.path(),
+        None,
+        vec![
+            finding("relay awaits forward, which awaits tx.send and can block for ever."),
+            finding("relay calls `notify_waiters`, which stores no permit."),
+        ],
+        true,
+    )
+    .await
+    .unwrap();
+    let payloads = out.payloads.unwrap();
+    let related = payloads[0]["body"]["state"]["related_code"]
+        .as_str()
+        .unwrap();
+    assert!(related.starts_with("// src/sink.rs:3"), "{related}");
+    assert!(related.contains("tx.send(event)"));
+    // `forward` was found in another file, so nothing the first claim names
+    // is hidden. The second names something that exists nowhere.
+    assert!(
+        out.results[0].unseen.is_empty(),
+        "{:?}",
+        out.results[0].unseen
+    );
+    assert_eq!(out.results[1].unseen, ["notify_waiters"]);
+}

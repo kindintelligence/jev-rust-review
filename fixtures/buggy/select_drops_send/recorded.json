@@ -2,70 +2,97 @@
   "model": "jev-1.13.0",
   "note": "Recorded from the live Jev API by tests/eval.rs live_eval; replayed offline.",
   "responses": {
-    "45bd136e51e557d3": {
+    "c98b031cdc6fe55e": {
       "model": "jev-1.13.0",
       "answers": {
         "correctness.logic": {
           "type": "noul",
-          "noul": 0.25
-        },
-        "async.blocking_call": {
-          "type": "noul",
-          "noul": 0.16
-        },
-        "async.select_cancellation": {
-          "type": "noul",
-          "noul": 0.52
-        },
-        "async.sequential_awaits": {
-          "type": "noul",
-          "noul": 0.25
+          "noul": 0.03
         },
         "idiom.clarity": {
           "type": "score",
-          "score": 0.42,
+          "score": 0.01,
           "probabilities": {
-            "0": 0.59,
-            "1": 0.39,
-            "2": 0.02
+            "0": 0.99,
+            "1": 0.01,
+            "2": 0.0
           },
-          "confidence": 0.36,
+          "confidence": 0.99,
           "legend": {}
         },
         "api.breaking_change": {
           "type": "noul",
-          "noul": 0.11
-        },
-        "tokio.select_not_cancel_safe": {
-          "type": "noul",
-          "noul": 0.36
+          "noul": 0.04
         }
       },
       "usage": {
         "input_tokens": 0
       }
     },
-    "2f925f1013acb0b6": {
+    "e6b3804a3723953c": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "correctness.logic": {
+          "type": "noul",
+          "noul": 0.26
+        },
+        "async.blocking_call": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "async.select_cancellation": {
+          "type": "noul",
+          "noul": 0.6
+        },
+        "async.sequential_awaits": {
+          "type": "noul",
+          "noul": 0.27
+        },
+        "idiom.clarity": {
+          "type": "score",
+          "score": 0.58,
+          "probabilities": {
+            "0": 0.46,
+            "1": 0.51,
+            "2": 0.03
+          },
+          "confidence": 0.26,
+          "legend": {}
+        },
+        "api.breaking_change": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "tokio.select_not_cancel_safe": {
+          "type": "noul",
+          "noul": 0.33
+        }
+      },
+      "usage": {
+        "input_tokens": 0
+      }
+    },
+    "c9b323cf7293ace7": {
       "model": "jev-1.13.0",
       "answers": {
         "support": {
           "type": "choice",
           "choice": "supported",
           "probabilities": {
-            "insufficient_context": 0.24,
-            "refuted": 0.2,
-            "supported": 0.56
+            "insufficient_context": 0.01,
+            "refuted": 0.35,
+            "supported": 0.64
           },
-          "confidence": 0.35
+          "confidence": 0.46
         },
         "severity": {
           "type": "score",
           "score": 2.81,
           "probabilities": {
             "0": 0.01,
-            "1": 0.06,
-            "2": 0.05,
-            "3": 0.88
+            "1": 0.05,
+            "2": 0.04,
+            "3": 0.9
           },
           "confidence": 0.81
         },
@@ -73,11 +100,11 @@
           "type": "choice",
           "choice": "real_defect",
           "probabilities": {
-            "debatable_tradeoff": 0.03,
-            "real_defect": 0.97,
+            "debatable_tradeoff": 0.05,
+            "real_defect": 0.95,
             "style_preference": 0.0
           },
-          "confidence": 0.96
+          "confidence": 0.92
         }
       },
       "usage": {
