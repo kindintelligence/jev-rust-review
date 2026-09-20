@@ -65,9 +65,10 @@ pub fn definitions(
         return Vec::new();
     }
     // Names are `[A-Za-z0-9_]` only, so the pattern cannot carry an option
-    // or a regex metacharacter.
+    // or a regex metacharacter. POSIX classes only: macOS git uses the BSD
+    // regex engine, which has no `\b`.
     let pattern = format!(
-        r"\b(fn|struct|enum|trait|type|const|static)[[:space:]]+({})\b",
+        "(^|[^A-Za-z0-9_])(fn|struct|enum|trait|type|const|static)[[:space:]]+({})([^A-Za-z0-9_]|$)",
         names.into_iter().collect::<Vec<_>>().join("|")
     );
     let mut out: Vec<Definition> = Vec::new();
