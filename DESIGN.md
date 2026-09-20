@@ -512,6 +512,6 @@ Still open after this run: nothing from the list above. One thing the run showed
 - [x] README
 - [x] Headless Claude Code session check (2026-09-19, on the kiln repo: server connected, both tools listed, full skill run)
 - [x] Secret scan of history; repo made public (2026-09-19)
-- [x] CI green on GitHub (run 35415756948)
+- [x] CI green on GitHub (run 35415756948; after the fourth change, run 35539152798 on `7737839`)
 - [x] Fourth change and re-run on both models (2026-09-21): Haiku 43/48 with Jev against 36/48, Sonnet 47/48 against 45/48 (§10, fourth result)
 - [ ] First tagged release (prebuilt binaries)
