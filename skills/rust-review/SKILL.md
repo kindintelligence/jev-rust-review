@@ -59,7 +59,7 @@ Call `evaluate_rust_changes` with `scope` (and `dry_run` if asked). Read these f
   - if the answer is no, move on and do not mention the flag;
   - if the answer is yes, you still need the concrete failure that step 5 asks for before it is a candidate;
   - never report something because it was flagged. "This `unwrap` can panic if the mutex is poisoned" and "this sum can overflow" are flags restated, not findings, unless you can show the input that gets there.
-- **Flags set the order of your reading, not its limits.** Jev was asked a fixed list of narrow questions about one unit at a time. It asks nothing about most defects that span files or that rest on a library's documented behaviour. So:
+- **Flags decide what you read first. Every changed unit still gets reviewed.** Jev was asked a fixed list of narrow questions about one unit at a time. It asks nothing about most defects that span files or that rest on a library's documented behaviour. So:
   - a unit with no flag has **not** been cleared. An empty `flagged` list means Jev had nothing to point at. It does not mean the change is clean;
   - a flag names one question about a unit. The unit can hold a different, worse defect. Answer the flag, then review the unit as if it had no flag.
 - `tool_covered`: flags on lines where a tool already reported the same defect. They never become findings. Use them only as a hint that the tool's diagnostic there deserves the closer look described in step 2.
@@ -80,7 +80,7 @@ Review every changed unit in `units`, flagged or not. Triage decides the order:
 1. flagged units first, strongest signal first;
 2. then every unit with no flag. Ask of each one what the change does and what could break, exactly as you would with no triage at all.
 
-When the change has more than 15 units, read all the flagged ones, then as many of the rest as you can, behaviour changes before renames and formatting. Say in the closing line how many units you did not read.
+When the change has more than 15 units, read all the flagged ones. Then read as many of the rest as you can. Take behaviour changes before renames and formatting. Say in the closing line how many units you did not read.
 
 Inspect a handful of units yourself. For many units, or several files, dispatch the `rust-reviewer` agent: `jev-rust-review:rust-reviewer`. Give it:
 
@@ -113,7 +113,7 @@ Call `verify_rust_findings` with all candidates (at most 20) and the same `scope
   3. If you can still state the concrete failure step by step, and your confidence is High, **keep the finding**. Show Jev's number and say in one line why you kept it, for example "depends on `forward` in src/sink.rs, which Jev's excerpt does not include".
   4. If your confidence is only Medium, move it to "considered and dismissed".
   5. If `category` is `style_preference`, drop it unless project policy asks for it.
-- `verdict: not_material`: Jev judged the claim true but not worth the author's time: it needs a condition the code gives no reason to expect, such as a lock poisoned by an earlier panic, a sum of ordinary counts overflowing, or a local file too large for memory. Leave it out of the report and out of the `--json` block. Put one line under "considered and dismissed". Keep it only if you can name the realistic input that reaches the failure and where that input comes from. If you can, put that in the claim and verify it again.
+- `verdict: not_material`: Jev judged the claim true and too remote to be worth the author's time. It needs a condition the code gives no reason to expect. Examples are a lock poisoned by an earlier panic, a sum of ordinary counts overflowing, and a local file too large for memory. Leave it out of the report and out of the `--json` block. Put one line under "considered and dismissed". Keep it only if you can name the realistic input that reaches the failure and where that input comes from. If you can, put that in the claim and verify it again.
 - `verdict: not_verified` with the tool's `status: jev_unavailable`: Jev did not see it. Keep it only on High confidence.
 - `status: invalid` or `error`: fix the input (line range, file, severity) and retry once. Otherwise treat the finding as unverified and apply the same rule as `uncertain`.
 
